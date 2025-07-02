@@ -9,6 +9,10 @@
     "version:pathway:minor": "npm version minor --workspace=@theaiinc/pathway",
     "version:pathway:major": "npm version major --workspace=@theaiinc/pathway",
     "publish:pathway": "npm run publish --workspace=@theaiinc/pathway",
+    "version:goggles:patch": "npm version patch --workspace=@theaiinc/pathway-goggles",
+    "version:goggles:minor": "npm version minor --workspace=@theaiinc/pathway-goggles",
+    "version:goggles:major": "npm version major --workspace=@theaiinc/pathway-goggles",
+    "publish:goggles": "npm run publish --workspace=@theaiinc/pathway-goggles",
     "build": "tsc",
     "start": "node dist/index.js"
   },
