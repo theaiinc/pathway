@@ -14,10 +14,14 @@ interface ControlsProps {
   selectedCase: string;
   onCaseChange: (caseName: string) => void;
   onPromptSelect: (promptName: string) => void;
+  onShowOverview: () => void;
 }
 
 const Controls = React.forwardRef<HTMLDivElement, ControlsProps>(
-  ({ testCases, selectedCase, onCaseChange, onPromptSelect }, ref) => {
+  (
+    { testCases, selectedCase, onCaseChange, onPromptSelect, onShowOverview },
+    ref
+  ) => {
     const selectedTestCase = testCases.find(tc => tc.name === selectedCase);
     const [hoveredPrompt, setHoveredPrompt] = useState<string | null>(null);
 
@@ -36,6 +40,9 @@ const Controls = React.forwardRef<HTMLDivElement, ControlsProps>(
           fontSize: '14px',
         }}
       >
+        <div style={{ marginBottom: 10 }}>
+          <button onClick={onShowOverview}>Show Overview</button>
+        </div>
         <div>
           <strong>Test Case:</strong>
           <select
@@ -72,20 +79,6 @@ const Controls = React.forwardRef<HTMLDivElement, ControlsProps>(
                   {prompt.name}
                 </li>
               ))}
-              <li
-                onClick={() => onPromptSelect('overview')}
-                onMouseEnter={() => setHoveredPrompt('overview')}
-                onMouseLeave={() => setHoveredPrompt(null)}
-                style={{
-                  cursor: 'pointer',
-                  padding: '2px 5px',
-                  borderRadius: 3,
-                  background:
-                    hoveredPrompt === 'overview' ? '#555' : 'transparent',
-                }}
-              >
-                Show Overview
-              </li>
             </ul>
           </div>
         )}

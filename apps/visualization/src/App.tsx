@@ -120,6 +120,11 @@ const App: React.FC = () => {
     hoveredWorkflowIdRef.current = hoveredWorkflowId;
   }, [hoveredWorkflowId]);
 
+  const selectedWorkflowIdRef = useRef(selectedWorkflowId);
+  useEffect(() => {
+    selectedWorkflowIdRef.current = selectedWorkflowId;
+  }, [selectedWorkflowId]);
+
   // --- Camera Animation Effect ---
   useEffect(() => {
     if (selectedWorkflowId) {
@@ -171,6 +176,88 @@ const App: React.FC = () => {
       }
     }
     setIsGenerating(false);
+  };
+
+  const handleShowOverview = () => {
+    setSelectedWorkflowId(null);
+
+    const camera = cameraRef.current;
+    const controls = controlsRef3D.current;
+    const simulationNodes = simulationNodesRef.current;
+
+    if (
+      !camera ||
+      !controls ||
+      !simulationNodes ||
+      simulationNodes.length === 0
+    )
+      return;
+
+    const box = new THREE.Box3();
+    simulationNodes.forEach(node => {
+      if (node.x !== undefined && node.y !== undefined) {
+        box.expandByPoint(new THREE.Vector3(node.x, node.y, 0));
+      }
+    });
+
+    if (box.isEmpty()) return;
+
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const maxDim = Math.max(size.x, size.y);
+    const fov = camera.fov * (Math.PI / 180);
+    const cameraZ = Math.abs(maxDim / 1.5 / Math.tan(fov / 2));
+
+    const startPos = camera.position.clone();
+    const endPos = new THREE.Vector3(
+      center.x,
+      center.y,
+      center.z + Math.max(cameraZ, 50)
+    );
+    const startTarget = controls.target.clone();
+    const endTarget = center;
+
+    let startTime: number | null = null;
+    const duration = 1000; // 1 second
+
+    const animateCamera = (time: number) => {
+      if (startTime === null) startTime = time;
+      const elapsed = time - startTime;
+      const alpha = Math.min(elapsed / duration, 1);
+
+      camera.position.lerpVectors(startPos, endPos, alpha);
+      controls.target.lerpVectors(startTarget, endTarget, alpha);
+      controls.update();
+
+      if (alpha < 1) {
+        requestAnimationFrame(animateCamera);
+      }
+    };
+    requestAnimationFrame(animateCamera);
+  };
+
+  const handleDeleteWorkflow = (workflowId: string) => {
+    // TODO: Connect to backend endpoint
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete workflow ${workflowId}?`
+    );
+    if (confirmDelete) {
+      const newNodes = nodes.filter(
+        node => getWorkflowId(node.id) !== workflowId
+      );
+      const newNodeIds = new Set(newNodes.map(n => n.id));
+      const newLinks = links.filter(
+        link =>
+          newNodeIds.has(link.source as string) &&
+          newNodeIds.has(link.target as string)
+      );
+
+      setNodes(newNodes);
+      setLinks(newLinks);
+      setSelectedWorkflowId(null);
+    }
   };
 
   const handleReset = async () => {
@@ -335,6 +422,9 @@ const App: React.FC = () => {
     const highlightColor = new THREE.Color(0x00ffff); // Cyan
     const defaultColor = new THREE.Color(0xffffff); // White
 
+    let downTime = 0;
+    const downPosition = new THREE.Vector2();
+
     const handleMouseMove = (event: MouseEvent) => {
       if (isPanningRef.current) return; // Don't update hover while panning
 
@@ -367,8 +457,10 @@ const App: React.FC = () => {
     };
     renderer.domElement.addEventListener('mousemove', handleMouseMove);
 
-    const handleMouseDown = () => {
+    const handleMouseDown = (event: MouseEvent) => {
       isPanningRef.current = true;
+      downTime = Date.now();
+      downPosition.set(event.clientX, event.clientY);
       // When clicking on a point, we want to make it the new center of rotation
       // without causing the view to "jump". To do this, we shift both the
       // camera and its target by the same amount.
@@ -384,12 +476,34 @@ const App: React.FC = () => {
         controls.update();
       }
     };
-    renderer.domElement.addEventListener('mousedown', handleMouseDown);
+    renderer.domElement.addEventListener(
+      'mousedown',
+      handleMouseDown as EventListener
+    );
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (event: MouseEvent) => {
       isPanningRef.current = false;
+      const upPosition = new THREE.Vector2(event.clientX, event.clientY);
+      const dist = downPosition.distanceTo(upPosition);
+      const timeDiff = Date.now() - downTime;
+
+      // Check if it's a click (not a drag)
+      if (dist < 5 && timeDiff < 200) {
+        if (hoveredWorkflowIdRef.current) {
+          if (selectedWorkflowIdRef.current === hoveredWorkflowIdRef.current) {
+            setSelectedWorkflowId(null); // toggle off
+          } else {
+            setSelectedWorkflowId(hoveredWorkflowIdRef.current);
+          }
+        } else {
+          setSelectedWorkflowId(null); // click on empty space
+        }
+      }
     };
-    renderer.domElement.addEventListener('mouseup', handleMouseUp);
+    renderer.domElement.addEventListener(
+      'mouseup',
+      handleMouseUp as EventListener
+    );
 
     // --- UI Bounds for Occlusion ---
     const updateUiBounds = () => {
@@ -551,14 +665,36 @@ const App: React.FC = () => {
       window.removeEventListener('resize', handleResize);
       renderer.domElement.removeEventListener('wheel', handleWheel);
       renderer.domElement.removeEventListener('mousemove', handleMouseMove);
-      renderer.domElement.removeEventListener('mousedown', handleMouseDown);
-      renderer.domElement.removeEventListener('mouseup', handleMouseUp);
+      renderer.domElement.removeEventListener(
+        'mousedown',
+        handleMouseDown as EventListener
+      );
+      renderer.domElement.removeEventListener(
+        'mouseup',
+        handleMouseUp as EventListener
+      );
       if (mountRef.current && mountRef.current.contains(renderer.domElement)) {
         mountRef.current.removeChild(renderer.domElement);
       }
       simulation.stop();
     };
   }, [nodes, links]);
+
+  // --- Delete Workflow Effect ---
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        (event.key === 'Delete' || event.key === 'Backspace') &&
+        selectedWorkflowId
+      ) {
+        handleDeleteWorkflow(selectedWorkflowId);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedWorkflowId, nodes, links]);
 
   // --- Camera Animation Effect (Implementation) ---
   useEffect(() => {
@@ -653,6 +789,7 @@ const App: React.FC = () => {
         selectedCase={selectedCase}
         onCaseChange={setSelectedCase}
         onPromptSelect={handleGenerate}
+        onShowOverview={handleShowOverview}
       />
       <PromptControls
         ref={promptControlsRef}

@@ -404,6 +404,144 @@
           "summary": "{{step_4.output}}"
         }
       }
+    },
+    {
+      "key": "19cd9f45-0beb-4f8e-9577-0897fffffa5b__intent_node",
+      "attributes": {
+        "id": "19cd9f45-0beb-4f8e-9577-0897fffffa5b__intent_node",
+        "type": "Intent",
+        "label": "overview",
+        "vectorId": "e2bf1828-6185-413f-8ba9-b1f1ac5a3218"
+      }
+    },
+    {
+      "key": "19cd9f45-0beb-4f8e-9577-0897fffffa5b__step_1",
+      "attributes": {
+        "id": "19cd9f45-0beb-4f8e-9577-0897fffffa5b__step_1",
+        "type": "Step",
+        "label": "Define the Scope of Overview",
+        "action": "define_scope",
+        "parameters": {
+          "description": "Identify the main points that need to be covered in the overview."
+        }
+      }
+    },
+    {
+      "key": "19cd9f45-0beb-4f8e-9577-0897fffffa5b__step_2",
+      "attributes": {
+        "id": "19cd9f45-0beb-4f8e-9577-0897fffffa5b__step_2",
+        "type": "Step",
+        "label": "Gather Relevant Information",
+        "action": "collect_information",
+        "parameters": {
+          "sources": [
+            "books",
+            "articles",
+            "websites"
+          ]
+        }
+      }
+    },
+    {
+      "key": "19cd9f45-0beb-4f8e-9577-0897fffffa5b__step_3",
+      "attributes": {
+        "id": "19cd9f45-0beb-4f8e-9577-0897fffffa5b__step_3",
+        "type": "Step",
+        "label": "Organize the Information",
+        "action": "organize_content",
+        "parameters": {
+          "method": "create_outline"
+        }
+      }
+    },
+    {
+      "key": "19cd9f45-0beb-4f8e-9577-0897fffffa5b__step_4",
+      "attributes": {
+        "id": "19cd9f45-0beb-4f8e-9577-0897fffffa5b__step_4",
+        "type": "Step",
+        "label": "Draft the Overview",
+        "action": "write_draft",
+        "parameters": {
+          "format": "paragraph format"
+        }
+      }
+    },
+    {
+      "key": "19cd9f45-0beb-4f8e-9577-0897fffffa5b__step_5",
+      "attributes": {
+        "id": "19cd9f45-0beb-4f8e-9577-0897fffffa5b__step_5",
+        "type": "Step",
+        "label": "Review and Edit the Overview",
+        "action": "review_edit",
+        "parameters": {
+          "criteria": [
+            "clarity",
+            "conciseness",
+            "accuracy"
+          ]
+        }
+      }
+    },
+    {
+      "key": "55a701d8-3b1e-4dbf-bc19-0052df607b91__intent_node",
+      "attributes": {
+        "id": "55a701d8-3b1e-4dbf-bc19-0052df607b91__intent_node",
+        "type": "Intent",
+        "label": "What is a closure in javascript?",
+        "vectorId": "fdb76bed-553c-4225-9813-c755297cc025"
+      }
+    },
+    {
+      "key": "55a701d8-3b1e-4dbf-bc19-0052df607b91__step_1",
+      "attributes": {
+        "id": "55a701d8-3b1e-4dbf-bc19-0052df607b91__step_1",
+        "type": "Step",
+        "label": "Define Closure",
+        "action": "explain_concept",
+        "parameters": {
+          "definition": "A closure is a function that retains access to its lexical scope, even when the function is executed outside that scope."
+        }
+      }
+    },
+    {
+      "key": "55a701d8-3b1e-4dbf-bc19-0052df607b91__step_2",
+      "attributes": {
+        "id": "55a701d8-3b1e-4dbf-bc19-0052df607b91__step_2",
+        "type": "Step",
+        "label": "Provide Example",
+        "action": "show_example",
+        "parameters": {
+          "example": "function outerFunction() { var outerVar = 'I am outside!'; function innerFunction() { console.log(outerVar); } return innerFunction; } var closure = outerFunction(); closure(); // Outputs: I am outside!"
+        }
+      }
+    },
+    {
+      "key": "55a701d8-3b1e-4dbf-bc19-0052df607b91__step_3",
+      "attributes": {
+        "id": "55a701d8-3b1e-4dbf-bc19-0052df607b91__step_3",
+        "type": "Step",
+        "label": "Discuss Use Cases",
+        "action": "list_use_cases",
+        "parameters": {
+          "use_cases": [
+            "Data privacy",
+            "Partial application",
+            "Maintaining state in async functions"
+          ]
+        }
+      }
+    },
+    {
+      "key": "55a701d8-3b1e-4dbf-bc19-0052df607b91__step_4",
+      "attributes": {
+        "id": "55a701d8-3b1e-4dbf-bc19-0052df607b91__step_4",
+        "type": "Step",
+        "label": "Summarize Importance",
+        "action": "summarize_importance",
+        "parameters": {
+          "importance": "Closures are essential in JavaScript as they enable powerful programming patterns, like encapsulation and factory functions."
+        }
+      }
     }
   ],
   "edges": [
@@ -619,6 +757,78 @@
       "key": "geid_32_4",
       "source": "06ff6736-dcb9-4e62-a0f3-dcf5d542143f__step_4",
       "target": "06ff6736-dcb9-4e62-a0f3-dcf5d542143f__step_5",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_136_0",
+      "source": "19cd9f45-0beb-4f8e-9577-0897fffffa5b__intent_node",
+      "target": "19cd9f45-0beb-4f8e-9577-0897fffffa5b__step_1",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_136_1",
+      "source": "19cd9f45-0beb-4f8e-9577-0897fffffa5b__step_1",
+      "target": "19cd9f45-0beb-4f8e-9577-0897fffffa5b__step_2",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_136_2",
+      "source": "19cd9f45-0beb-4f8e-9577-0897fffffa5b__step_2",
+      "target": "19cd9f45-0beb-4f8e-9577-0897fffffa5b__step_3",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_136_3",
+      "source": "19cd9f45-0beb-4f8e-9577-0897fffffa5b__step_3",
+      "target": "19cd9f45-0beb-4f8e-9577-0897fffffa5b__step_4",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_136_4",
+      "source": "19cd9f45-0beb-4f8e-9577-0897fffffa5b__step_4",
+      "target": "19cd9f45-0beb-4f8e-9577-0897fffffa5b__step_5",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_141_0",
+      "source": "55a701d8-3b1e-4dbf-bc19-0052df607b91__intent_node",
+      "target": "55a701d8-3b1e-4dbf-bc19-0052df607b91__step_1",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_141_1",
+      "source": "55a701d8-3b1e-4dbf-bc19-0052df607b91__step_1",
+      "target": "55a701d8-3b1e-4dbf-bc19-0052df607b91__step_2",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_141_2",
+      "source": "55a701d8-3b1e-4dbf-bc19-0052df607b91__step_2",
+      "target": "55a701d8-3b1e-4dbf-bc19-0052df607b91__step_3",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_141_3",
+      "source": "55a701d8-3b1e-4dbf-bc19-0052df607b91__step_3",
+      "target": "55a701d8-3b1e-4dbf-bc19-0052df607b91__step_4",
       "attributes": {
         "type": "Flow"
       }
