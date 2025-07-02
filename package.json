@@ -5,6 +5,10 @@
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
+    "version:pathway:patch": "npm version patch --workspace=@theaiinc/pathway",
+    "version:pathway:minor": "npm version minor --workspace=@theaiinc/pathway",
+    "version:pathway:major": "npm version major --workspace=@theaiinc/pathway",
+    "publish:pathway": "npm run publish --workspace=@theaiinc/pathway",
     "build": "tsc",
     "start": "node dist/index.js"
   },
