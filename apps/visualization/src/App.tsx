@@ -4,6 +4,7 @@ import * as d3 from 'd3-force-3d';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import PromptControls from './components/PromptControls';
 import Controls from './components/Controls';
+import SearchControls from './components/SearchControls';
 import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
@@ -94,6 +95,7 @@ const App: React.FC = () => {
   const mountRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
   const promptControlsRef = useRef<HTMLDivElement>(null);
+  const searchControlsRef = useRef<HTMLDivElement>(null);
   const uiBoundsRef = useRef<DOMRect[]>([]);
 
   // Refs for three.js objects
@@ -116,6 +118,7 @@ const App: React.FC = () => {
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(
     null
   );
+  const [highlightedNodeIds, setHighlightedNodeIds] = useState<string[]>([]);
 
   // Use a ref to pass the latest hovered ID to the animation loop without re-triggering the effect
   const hoveredWorkflowIdRef = useRef(hoveredWorkflowId);
@@ -276,6 +279,68 @@ const App: React.FC = () => {
     setIsGenerating(false);
   };
 
+  // --- Search Handler ---
+  const handleSearch = (query: string) => {
+    if (!query) {
+      setHighlightedNodeIds([]);
+      return;
+    }
+
+    const results = simulationNodesRef.current
+      .filter(node => node.name.toLowerCase().includes(query.toLowerCase()))
+      .map(node => node.id);
+    setHighlightedNodeIds(results);
+
+    // Animate camera to the first search result
+    if (results.length > 0) {
+      const firstResultId = results[0];
+      const nodeData = simulationNodesRef.current.find(
+        n => n.id === firstResultId
+      );
+      const nodePoints = nodePointsRef.current;
+      const camera = cameraRef.current;
+      const controls = controlsRef3D.current;
+
+      if (nodeData && nodePoints && camera && controls) {
+        const targetPosition = new THREE.Vector3(
+          nodeData.x,
+          nodeData.y,
+          nodeData.z
+        );
+        const direction = new THREE.Vector3()
+          .subVectors(camera.position, controls.target)
+          .normalize();
+        const distance = 100;
+
+        const startPos = camera.position.clone();
+        const endPos = new THREE.Vector3().addVectors(
+          targetPosition,
+          direction.multiplyScalar(distance)
+        );
+        const startTarget = controls.target.clone();
+        const endTarget = targetPosition;
+
+        let startTime: number | null = null;
+        const duration = 500; // ms
+
+        const tick = (time: number) => {
+          if (startTime === null) startTime = time;
+          const elapsed = time - startTime;
+          const alpha = Math.min(elapsed / duration, 1);
+
+          camera.position.lerpVectors(startPos, endPos, alpha);
+          controls.target.lerpVectors(startTarget, endTarget, alpha);
+          controls.update();
+
+          if (alpha < 1) {
+            requestAnimationFrame(tick);
+          }
+        };
+        requestAnimationFrame(tick);
+      }
+    }
+  };
+
   // --- Main Render Effect ---
   useEffect(() => {
     if (!mountRef.current || nodes.length === 0) return;
@@ -428,6 +493,7 @@ const App: React.FC = () => {
     const raycaster = new THREE.Raycaster();
     raycaster.params.Points.threshold = 10;
     const highlightColor = new THREE.Color(0x00ffff); // Cyan
+    const searchHighlightColor = new THREE.Color(0xffff00); // Yellow
     const defaultColor = new THREE.Color(0xffffff); // White
 
     let downTime = 0;
@@ -520,6 +586,8 @@ const App: React.FC = () => {
         bounds.push(controlsRef.current.getBoundingClientRect());
       if (promptControlsRef.current)
         bounds.push(promptControlsRef.current.getBoundingClientRect());
+      if (searchControlsRef.current)
+        bounds.push(searchControlsRef.current.getBoundingClientRect());
       uiBoundsRef.current = bounds;
     };
     updateUiBounds();
@@ -562,13 +630,20 @@ const App: React.FC = () => {
         positions[i * 3 + 2] = node.z ?? 0;
         const wfId = getWorkflowId(node.id);
 
-        const isHighlighted =
+        const isWorkflowHighlighted =
           (selectedWorkflowId && wfId === selectedWorkflowId) ||
           (!selectedWorkflowId &&
             wfId &&
             wfId === hoveredWorkflowIdRef.current);
 
-        const color = isHighlighted ? highlightColor : defaultColor;
+        const isSearchHighlighted = highlightedNodeIds.includes(node.id);
+
+        const color = isSearchHighlighted
+          ? searchHighlightColor
+          : isWorkflowHighlighted
+          ? highlightColor
+          : defaultColor;
+
         colors[i * 3] = color.r;
         colors[i * 3 + 1] = color.g;
         colors[i * 3 + 2] = color.b;
@@ -853,6 +928,7 @@ const App: React.FC = () => {
         onPromptSelect={handleGenerate}
         onShowOverview={handleShowOverview}
       />
+      <SearchControls ref={searchControlsRef} onSearch={handleSearch} />
       <PromptControls
         ref={promptControlsRef}
         onGenerate={handleGenerate}
@@ -862,6 +938,7 @@ const App: React.FC = () => {
       {labels.map((label, index) => {
         const wfId = getWorkflowId(label.id);
         const isHovered = wfId ? wfId === hoveredWorkflowId : false;
+        const isSearchHighlighted = highlightedNodeIds.includes(label.id);
         return (
           <div
             key={index}
@@ -871,7 +948,9 @@ const App: React.FC = () => {
               top: label.y,
               color: label.type === 'Intent' ? 'cyan' : 'white',
               fontWeight:
-                (selectedWorkflowId && wfId === selectedWorkflowId) || isHovered
+                (selectedWorkflowId && wfId === selectedWorkflowId) ||
+                isHovered ||
+                isSearchHighlighted
                   ? 'bold'
                   : 'normal',
               transform: 'translate(-50%, -50%)',
