@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
-import * as d3 from 'd3-force';
+import * as d3 from 'd3-force-3d';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import PromptControls from './components/PromptControls';
 import Controls from './components/Controls';
@@ -29,6 +29,7 @@ interface NodeObject extends d3.SimulationNodeDatum {
   type: string;
   x?: number;
   y?: number;
+  z?: number;
 }
 
 interface LinkObject extends d3.SimulationLinkDatum<NodeObject> {
@@ -380,17 +381,17 @@ const App: React.FC = () => {
     simulationNodesRef.current = simulationNodes;
     const simulationLinks = links.map(link => ({ ...link })) as LinkObject[];
     const simulation = d3
-      .forceSimulation(simulationNodes)
+      .forceSimulation(simulationNodes, 3)
       .force(
         'link',
         d3
           .forceLink(simulationLinks)
-          .id(d => (d as NodeObject).id)
+          .id((d: NodeObject) => d.id)
           .distance(50)
       )
       .force('charge', d3.forceManyBody().strength(-300))
-      .force('center', d3.forceCenter(0, 0));
-    simulation.tick(300);
+      .force('center', d3.forceCenter(0, 0, 0));
+    simulation.tick(500);
 
     // --- Node Points ---
     const nodePositions = new Float32Array(simulationNodes.length * 3);
@@ -558,7 +559,7 @@ const App: React.FC = () => {
       simulationNodes.forEach((node, i) => {
         positions[i * 3] = node.x ?? 0;
         positions[i * 3 + 1] = node.y ?? 0;
-        positions[i * 3 + 2] = 0.1; // z-offset
+        positions[i * 3 + 2] = node.z ?? 0;
         const wfId = getWorkflowId(node.id);
 
         const isHighlighted =
@@ -586,8 +587,8 @@ const App: React.FC = () => {
       frustum.setFromProjectionMatrix(projScreenMatrix);
 
       simulationNodes.forEach(node => {
-        if (node.x && node.y) {
-          const nodePosition = new THREE.Vector3(node.x, node.y, 0);
+        if (node.x && node.y && node.z) {
+          const nodePosition = new THREE.Vector3(node.x, node.y, node.z);
 
           if (!frustum.containsPoint(nodePosition)) {
             return; // Don't render label if node is outside the camera view
@@ -631,9 +632,23 @@ const App: React.FC = () => {
       simulationLinks.forEach(link => {
         const source = link.source as NodeObject;
         const target = link.target as NodeObject;
-        if (source.x && source.y && target.x && target.y) {
+        if (
+          source.x &&
+          source.y &&
+          source.z &&
+          target.x &&
+          target.y &&
+          target.z
+        ) {
           const geometry = new LineGeometry();
-          geometry.setPositions([source.x, source.y, 0, target.x, target.y, 0]);
+          geometry.setPositions([
+            source.x,
+            source.y,
+            source.z,
+            target.x,
+            target.y,
+            target.z,
+          ]);
 
           const wfId = getWorkflowId(source.id);
           const isHighlighted =
