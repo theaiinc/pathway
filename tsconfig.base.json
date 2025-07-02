@@ -16,7 +16,8 @@
     "baseUrl": ".",
     "strict": true,
     "paths": {
-      "@theaiinc/pathway": ["dist/libs/pathway"]
+      "@theaiinc/pathway": ["dist/libs/pathway"],
+      "@theaiinc/pathway-goggles": ["dist/libs/pathway-goggles"]
     }
   },
   "exclude": ["node_modules", "tmp"]

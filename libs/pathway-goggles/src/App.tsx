@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
+// @ts-expect-error: d3-force-3d lacks type definitions
 import * as d3 from 'd3-force-3d';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import PromptControls from './components/PromptControls';
