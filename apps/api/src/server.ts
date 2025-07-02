@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { PathwayManager, GraphStore, VectorStore } from '@pathway';
+import { PathwayManager, GraphStore, VectorStore } from '@theaiinc/pathway';
 import path from 'path';
 
 // Note: Assumes .env file is in the root of the `project-oasis` directory
