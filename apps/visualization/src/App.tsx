@@ -93,6 +93,14 @@ const App: React.FC = () => {
   const promptControlsRef = useRef<HTMLDivElement>(null);
   const uiBoundsRef = useRef<DOMRect[]>([]);
 
+  // Refs for three.js objects
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const controlsRef3D = useRef<OrbitControls | null>(null);
+  const nodePointsRef = useRef<THREE.Points | null>(null);
+  const simulationNodesRef = useRef<NodeObject[]>([]);
+  const intersectionPointRef = useRef<THREE.Vector3 | null>(null);
+
   const [labels, setLabels] = useState<Label[]>([]);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [links, setLinks] = useState<Edge[]>([]);
@@ -110,6 +118,13 @@ const App: React.FC = () => {
   useEffect(() => {
     hoveredWorkflowIdRef.current = hoveredWorkflowId;
   }, [hoveredWorkflowId]);
+
+  // --- Camera Animation Effect ---
+  useEffect(() => {
+    if (selectedWorkflowId) {
+      // Logic to animate camera to the selected workflow
+    }
+  }, [selectedWorkflowId]);
 
   // --- API Handlers ---
   useEffect(() => {
@@ -180,6 +195,8 @@ const App: React.FC = () => {
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(width, height);
     mount.appendChild(renderer.domElement);
+    sceneRef.current = scene;
+    cameraRef.current = camera;
 
     // --- Controls ---
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -190,25 +207,61 @@ const App: React.FC = () => {
     controls.maxDistance = Infinity;
     controls.enableZoom = false; // Disable default zoom for custom implementation
 
+    // Prevent camera from going perfectly top-down or bottom-up
+    controls.minPolarAngle = Math.PI / 4; // 45 degrees
+    controls.maxPolarAngle = (3 * Math.PI) / 4; // 135 degrees
+    controlsRef3D.current = controls;
+
     // --- Custom Zoom ---
     const zoomSpeed = 0.02;
     const handleWheel = (event: WheelEvent) => {
       event.preventDefault();
       const direction = event.deltaY > 0 ? 1 : -1;
       const zoomAmount = 1 - direction * zoomSpeed;
-      const mouse = new THREE.Vector2(
-        (event.clientX / renderer.domElement.clientWidth) * 2 - 1,
-        -(event.clientY / renderer.domElement.clientHeight) * 2 + 1
+      const camera = cameraRef.current;
+      const controls = controlsRef3D.current;
+
+      if (!camera || !controls) return;
+
+      let targetPoint: THREE.Vector3;
+
+      if (intersectionPointRef.current) {
+        targetPoint = intersectionPointRef.current;
+      } else {
+        // Fallback: project mouse to a plane that contains the orbit controls target
+        const plane = new THREE.Plane();
+        const ray = new THREE.Ray();
+        plane.setFromNormalAndCoplanarPoint(
+          camera.getWorldDirection(new THREE.Vector3()),
+          controls.target
+        );
+        const mouse = new THREE.Vector2(
+          (event.clientX / renderer.domElement.clientWidth) * 2 - 1,
+          -(event.clientY / renderer.domElement.clientHeight) * 2 + 1
+        );
+        ray.origin.copy(camera.position);
+        ray.direction
+          .set(mouse.x, mouse.y, 0.5)
+          .unproject(camera)
+          .sub(ray.origin)
+          .normalize();
+
+        const fallbackTarget = new THREE.Vector3();
+        ray.intersectPlane(plane, fallbackTarget);
+        targetPoint = fallbackTarget;
+      }
+
+      // Move camera and controls target
+      const newCamPos = new THREE.Vector3().lerpVectors(
+        camera.position,
+        targetPoint,
+        1 - zoomAmount
       );
-      const vector = new THREE.Vector3(mouse.x, mouse.y, 0.5)
-        .unproject(camera)
-        .sub(camera.position)
-        .normalize();
-      const distance = camera.position.distanceTo(controls.target);
-      const newPosition = camera.position
-        .clone()
-        .add(vector.multiplyScalar(distance - distance * zoomAmount));
-      camera.position.copy(newPosition);
+      const delta = new THREE.Vector3().subVectors(newCamPos, camera.position);
+      const newTarget = controls.target.clone().add(delta);
+
+      camera.position.copy(newCamPos);
+      controls.target.copy(newTarget);
       controls.update();
     };
     renderer.domElement.addEventListener('wheel', handleWheel, {
@@ -220,6 +273,7 @@ const App: React.FC = () => {
       ...node,
       name: node.label,
     })) as NodeObject[];
+    simulationNodesRef.current = simulationNodes;
     const simulationLinks = links.map(link => ({ ...link })) as LinkObject[];
     const simulation = d3
       .forceSimulation(simulationNodes)
@@ -253,6 +307,7 @@ const App: React.FC = () => {
     });
     const nodePoints = new THREE.Points(nodeGeometry, nodeMaterial);
     scene.add(nodePoints);
+    nodePointsRef.current = nodePoints;
 
     // --- Link Lines ---
     const linkMaterial = new LineMaterial({
@@ -284,6 +339,7 @@ const App: React.FC = () => {
       if (intersections.length > 0) {
         const firstHit = intersections[0];
         let newHoverId = null;
+        intersectionPointRef.current = firstHit.point; // Store intersection point
 
         if (firstHit.object.type === 'Points' && firstHit.index !== undefined) {
           const hoveredNodeId = simulationNodes[firstHit.index].id;
@@ -294,6 +350,7 @@ const App: React.FC = () => {
         setHoveredWorkflowId(newHoverId);
       } else {
         setHoveredWorkflowId(null);
+        intersectionPointRef.current = null; // Clear intersection point
       }
     };
     renderer.domElement.addEventListener('mousemove', handleMouseMove);
@@ -310,23 +367,25 @@ const App: React.FC = () => {
     updateUiBounds();
 
     // --- Initial Camera Position ---
-    const box = new THREE.Box3();
-    simulationNodes.forEach(node => {
-      if (node.x !== undefined && node.y !== undefined) {
-        box.expandByPoint(new THREE.Vector3(node.x, node.y, 0));
-      }
-    });
+    if (!selectedWorkflowId) {
+      const box = new THREE.Box3();
+      simulationNodes.forEach(node => {
+        if (node.x !== undefined && node.y !== undefined) {
+          box.expandByPoint(new THREE.Vector3(node.x, node.y, 0));
+        }
+      });
 
-    const center = new THREE.Vector3();
-    box.getCenter(center);
-    const size = new THREE.Vector3();
-    box.getSize(size);
-    const maxDim = Math.max(size.x, size.y);
-    const fov = camera.fov * (Math.PI / 180);
-    const cameraZ = Math.abs(maxDim / 1.5 / Math.tan(fov / 2));
-    camera.position.set(center.x, center.y, center.z + Math.max(cameraZ, 50));
-    controls.target.copy(center);
-    controls.update();
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const maxDim = Math.max(size.x, size.y);
+      const fov = camera.fov * (Math.PI / 180);
+      const cameraZ = Math.abs(maxDim / 1.5 / Math.tan(fov / 2));
+      camera.position.set(center.x, center.y, center.z + Math.max(cameraZ, 50));
+      controls.target.copy(center);
+      controls.update();
+    }
 
     // --- Animation Loop ---
     const animate = () => {
@@ -448,6 +507,77 @@ const App: React.FC = () => {
       simulation.stop();
     };
   }, [nodes, links]);
+
+  // --- Camera Animation Effect (Implementation) ---
+  useEffect(() => {
+    if (selectedWorkflowId) {
+      const scene = sceneRef.current;
+      const camera = cameraRef.current;
+      const controls = controlsRef3D.current;
+      const nodePoints = nodePointsRef.current;
+      const simulationNodes = simulationNodesRef.current;
+
+      if (!scene || !camera || !controls || !nodePoints || !simulationNodes)
+        return;
+
+      const selectedNodePositions: THREE.Vector3[] = [];
+      simulationNodes.forEach((node, i) => {
+        if (getWorkflowId(node.id) === selectedWorkflowId) {
+          const positionArray = nodePoints.geometry.attributes.position.array;
+          selectedNodePositions.push(
+            new THREE.Vector3(
+              positionArray[i * 3],
+              positionArray[i * 3 + 1],
+              positionArray[i * 3 + 2]
+            )
+          );
+        }
+      });
+
+      if (selectedNodePositions.length === 0) return;
+
+      const box = new THREE.Box3();
+      selectedNodePositions.forEach(pos => {
+        box.expandByPoint(pos);
+      });
+
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const fov = camera.fov * (Math.PI / 180);
+      const cameraZ = Math.abs(maxDim / 1.5 / Math.tan(fov / 2));
+
+      // Simple animation (in a real app, use a library like GSAP)
+      const startPos = camera.position.clone();
+      const endPos = new THREE.Vector3(
+        center.x,
+        center.y,
+        center.z + Math.max(cameraZ, 50)
+      );
+      const startTarget = controls.target.clone();
+      const endTarget = center;
+
+      let startTime: number | null = null;
+      const duration = 1000; // 1 second
+
+      const tick = (time: number) => {
+        if (startTime === null) startTime = time;
+        const elapsed = time - startTime;
+        const alpha = Math.min(elapsed / duration, 1);
+
+        camera.position.lerpVectors(startPos, endPos, alpha);
+        controls.target.lerpVectors(startTarget, endTarget, alpha);
+        controls.update();
+
+        if (alpha < 1) {
+          requestAnimationFrame(tick);
+        }
+      };
+      requestAnimationFrame(tick);
+    }
+  }, [selectedWorkflowId]);
 
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
