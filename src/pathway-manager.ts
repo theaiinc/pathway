@@ -136,9 +136,42 @@ export class PathwayManager {
     const suggestion = responseData.choices[0].message?.content;
     console.log('[Manager] LLM suggestion received:', suggestion);
 
-    // 4. (Placeholder) Apply adaptations
+    // 4. Apply adaptations
     const newWorkflow = workflow.copy();
-    console.log('[Manager] Placeholder adaptation complete (workflow cloned).');
+    if (suggestion) {
+      try {
+        const parsedSuggestion = JSON.parse(suggestion);
+        if (parsedSuggestion.steps_to_change) {
+          for (const change of parsedSuggestion.steps_to_change) {
+            const nodeToChange = newWorkflow.findNode(
+              node =>
+                newWorkflow.getNodeAttribute(node, 'label') === change.label
+            );
+            if (nodeToChange) {
+              console.log(
+                `[Manager] Applying change to step: "${change.label}"`
+              );
+              newWorkflow.setNodeAttribute(
+                nodeToChange,
+                'parameters',
+                change.new_parameters
+              );
+            } else {
+              console.warn(
+                `[Manager] Could not find step "${change.label}" to apply changes.`
+              );
+            }
+          }
+        }
+      } catch (error) {
+        console.error(
+          '[Manager] Failed to parse or apply LLM suggestion:',
+          error
+        );
+      }
+    }
+
+    console.log('[Manager] Adaptation complete.');
     return newWorkflow;
   }
 }

@@ -61,6 +61,30 @@ async function main() {
     console.log(
       `[Manager] Adaptation complete. New workflow has ${adaptedWorkflow.order} nodes.`
     );
+
+    console.log('\n--- Step 4: Verify Adaptation ---');
+    const stepToVerify = adaptedWorkflow.findNode(
+      node =>
+        adaptedWorkflow.getNodeAttribute(node, 'label') === 'Use fs.readFile'
+    );
+    if (stepToVerify) {
+      const params = adaptedWorkflow.getNodeAttribute(
+        stepToVerify,
+        'parameters'
+      );
+      console.log('Parameters of adapted step:', params);
+      if (params.function !== 'fs.readFile') {
+        console.log(
+          '✅ Verification successful: Step parameters were changed.'
+        );
+      } else {
+        console.log(
+          '❌ Verification failed: Step parameters were not changed.'
+        );
+      }
+    } else {
+      console.log('Could not find step to verify.');
+    }
   } else {
     console.log('[Manager] Failed to retrieve a similar workflow.');
   }
