@@ -10,6 +10,7 @@ import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 
 const API_URL = 'http://localhost:3001';
 
+// --- Interfaces ---
 interface Node {
   id: string;
   type: string;
@@ -35,13 +36,13 @@ interface LinkObject extends d3.SimulationLinkDatum<NodeObject> {
 }
 
 interface Label {
+  id: string;
   name: string;
   x: number;
   y: number;
   type: string;
 }
 
-// Type for the raw data from the graphology export
 interface GraphologyNode {
   key: string;
   attributes: {
@@ -78,7 +79,15 @@ const mockTestCases = [
   },
 ];
 
+// --- Helper Functions ---
+const getWorkflowId = (nodeId: string): string | null => {
+  const match = nodeId.match(/^([a-f0-9-]+)__/);
+  return match ? match[1] : null;
+};
+
+// --- Main Component ---
 const App: React.FC = () => {
+  // --- Refs and State ---
   const mountRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
   const promptControlsRef = useRef<HTMLDivElement>(null);
@@ -89,13 +98,21 @@ const App: React.FC = () => {
   const [links, setLinks] = useState<Edge[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectedCase, setSelectedCase] = useState(mockTestCases[0].name);
+  const [hoveredWorkflowId, setHoveredWorkflowId] = useState<string | null>(
+    null
+  );
 
-  // Fetch initial graph
+  // Use a ref to pass the latest hovered ID to the animation loop without re-triggering the effect
+  const hoveredWorkflowIdRef = useRef(hoveredWorkflowId);
+  useEffect(() => {
+    hoveredWorkflowIdRef.current = hoveredWorkflowId;
+  }, [hoveredWorkflowId]);
+
+  // --- API Handlers ---
   useEffect(() => {
     fetch(`${API_URL}/graph`)
       .then(res => res.json())
       .then((data: GraphData) => {
-        console.log('Fetched graph data:', data);
         if (data && data.nodes) {
           setNodes(data.nodes.map(n => ({ id: n.key, ...n.attributes })));
           setLinks(
@@ -116,7 +133,6 @@ const App: React.FC = () => {
       body: JSON.stringify({ prompt }),
     });
     const data: GraphData = await response.json();
-    console.log('Generated graph data:', data);
     if (data && data.nodes) {
       setNodes(data.nodes.map(n => ({ id: n.key, ...n.attributes })));
       setLinks(data.edges.map(e => ({ source: e.source, target: e.target })));
@@ -132,86 +148,62 @@ const App: React.FC = () => {
     setIsGenerating(false);
   };
 
+  // --- Main Render Effect ---
   useEffect(() => {
     if (!mountRef.current || nodes.length === 0) return;
 
     const mount = mountRef.current;
-
     const width = mount.clientWidth;
     const height = mount.clientHeight;
 
-    // Scene
+    // --- Scene Setup ---
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x000000);
-
-    // Camera
     const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 10000);
-
-    // Renderer
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(width, height);
     mount.appendChild(renderer.domElement);
 
-    // Controls
+    // --- Controls ---
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
     controls.screenSpacePanning = false;
     controls.minDistance = 0;
     controls.maxDistance = Infinity;
-    controls.enableZoom = false; // Disable default zoom
+    controls.enableZoom = false; // Disable default zoom for custom implementation
 
-    // --- Custom Zoom Logic ---
+    // --- Custom Zoom ---
     const zoomSpeed = 0.02;
     const handleWheel = (event: WheelEvent) => {
       event.preventDefault();
-
       const direction = event.deltaY > 0 ? 1 : -1;
       const zoomAmount = 1 - direction * zoomSpeed;
-
-      // Get mouse position in normalized device coordinates
-      const mouse = new THREE.Vector2();
-      mouse.x = (event.clientX / renderer.domElement.clientWidth) * 2 - 1;
-      mouse.y = -(event.clientY / renderer.domElement.clientHeight) * 2 + 1;
-
-      const vector = new THREE.Vector3(mouse.x, mouse.y, 0.5);
-      vector.unproject(camera);
-      vector.sub(camera.position).normalize();
-
+      const mouse = new THREE.Vector2(
+        (event.clientX / renderer.domElement.clientWidth) * 2 - 1,
+        -(event.clientY / renderer.domElement.clientHeight) * 2 + 1
+      );
+      const vector = new THREE.Vector3(mouse.x, mouse.y, 0.5)
+        .unproject(camera)
+        .sub(camera.position)
+        .normalize();
       const distance = camera.position.distanceTo(controls.target);
-      const newDistance = distance * zoomAmount;
-
-      // Move camera along the vector towards the mouse
       const newPosition = camera.position
         .clone()
-        .add(vector.multiplyScalar(distance - newDistance));
-
+        .add(vector.multiplyScalar(distance - distance * zoomAmount));
       camera.position.copy(newPosition);
       controls.update();
     };
-
     renderer.domElement.addEventListener('wheel', handleWheel, {
       passive: false,
     });
-    // --- End Custom Zoom Logic ---
 
-    const updateUiBounds = () => {
-      const bounds: DOMRect[] = [];
-      if (controlsRef.current) {
-        bounds.push(controlsRef.current.getBoundingClientRect());
-      }
-      if (promptControlsRef.current) {
-        bounds.push(promptControlsRef.current.getBoundingClientRect());
-      }
-      uiBoundsRef.current = bounds;
-    };
-
+    // --- D3 Simulation ---
     const simulationNodes = nodes.map(node => ({
       ...node,
       name: node.label,
     })) as NodeObject[];
     const simulationLinks = links.map(link => ({ ...link })) as LinkObject[];
-
     const simulation = d3
       .forceSimulation(simulationNodes)
       .force(
@@ -221,38 +213,86 @@ const App: React.FC = () => {
           .id(d => (d as NodeObject).id)
           .distance(50)
       )
-      .force('charge', d3.forceManyBody().strength(-250))
+      .force('charge', d3.forceManyBody().strength(-300))
       .force('center', d3.forceCenter(0, 0));
+    simulation.tick(300);
 
-    // Run simulation for a bit to get a stable initial layout
-    for (let i = 0; i < 300; ++i) {
-      simulation.tick();
-    }
-
-    // --- Create Points for Nodes ---
+    // --- Node Points ---
     const nodePositions = new Float32Array(simulationNodes.length * 3);
+    const nodeColors = new Float32Array(simulationNodes.length * 3);
     const nodeGeometry = new THREE.BufferGeometry();
     nodeGeometry.setAttribute(
       'position',
       new THREE.BufferAttribute(nodePositions, 3)
     );
-
-    simulationNodes.forEach((node, i) => {
-      nodePositions[i * 3] = node.x ?? 0;
-      nodePositions[i * 3 + 1] = node.y ?? 0;
-      nodePositions[i * 3 + 2] = 0.1; // z-offset to appear above lines
-    });
-
+    nodeGeometry.setAttribute(
+      'color',
+      new THREE.BufferAttribute(nodeColors, 3)
+    );
     const nodeMaterial = new THREE.PointsMaterial({
-      color: 0xffffff,
-      size: 8,
-      sizeAttenuation: false, // Ensures points are same size regardless of distance
+      size: 10,
+      sizeAttenuation: false,
+      vertexColors: true,
     });
-
     const nodePoints = new THREE.Points(nodeGeometry, nodeMaterial);
     scene.add(nodePoints);
 
-    // --- Auto-zoom logic ---
+    // --- Link Lines ---
+    const linkMaterial = new LineMaterial({
+      color: 0xffffff,
+      linewidth: 2,
+      transparent: true,
+      opacity: 0.6,
+    });
+    linkMaterial.resolution.set(width, height);
+    const linkMeshes: Line2[] = [];
+
+    // --- Hover/Highlighting Logic ---
+    const raycaster = new THREE.Raycaster();
+    raycaster.params.Points.threshold = 10;
+    const highlightColor = new THREE.Color(0x00ffff); // Cyan
+    const defaultColor = new THREE.Color(0xffffff); // White
+
+    const handleMouseMove = (event: MouseEvent) => {
+      const mouse = new THREE.Vector2(
+        (event.clientX / width) * 2 - 1,
+        -(event.clientY / height) * 2 + 1
+      );
+      raycaster.setFromCamera(mouse, camera);
+      const intersections = raycaster.intersectObjects([
+        nodePoints,
+        ...linkMeshes,
+      ]);
+
+      if (intersections.length > 0) {
+        const firstHit = intersections[0];
+        let newHoverId = null;
+
+        if (firstHit.object.type === 'Points' && firstHit.index !== undefined) {
+          const hoveredNodeId = simulationNodes[firstHit.index].id;
+          newHoverId = getWorkflowId(hoveredNodeId);
+        } else if (firstHit.object.userData.workflowId) {
+          newHoverId = firstHit.object.userData.workflowId;
+        }
+        setHoveredWorkflowId(newHoverId);
+      } else {
+        setHoveredWorkflowId(null);
+      }
+    };
+    renderer.domElement.addEventListener('mousemove', handleMouseMove);
+
+    // --- UI Bounds for Occlusion ---
+    const updateUiBounds = () => {
+      const bounds: DOMRect[] = [];
+      if (controlsRef.current)
+        bounds.push(controlsRef.current.getBoundingClientRect());
+      if (promptControlsRef.current)
+        bounds.push(promptControlsRef.current.getBoundingClientRect());
+      uiBoundsRef.current = bounds;
+    };
+    updateUiBounds();
+
+    // --- Initial Camera Position ---
     const box = new THREE.Box3();
     simulationNodes.forEach(node => {
       if (node.x !== undefined && node.y !== undefined) {
@@ -260,58 +300,50 @@ const App: React.FC = () => {
       }
     });
 
-    const size = new THREE.Vector3();
-    box.getSize(size);
     const center = new THREE.Vector3();
     box.getCenter(center);
-
+    const size = new THREE.Vector3();
+    box.getSize(size);
     const maxDim = Math.max(size.x, size.y);
     const fov = camera.fov * (Math.PI / 180);
     const cameraZ = Math.abs(maxDim / 1.5 / Math.tan(fov / 2));
-
-    // Add padding and set a min distance
     camera.position.set(center.x, center.y, center.z + Math.max(cameraZ, 50));
     controls.target.copy(center);
     controls.update();
 
-    // --- Create Lines ---
-    const linkMaterial = new LineMaterial({
-      color: 0xffffff,
-      linewidth: 2, // in pixels
-      transparent: true,
-      opacity: 0.6,
-    });
-    linkMaterial.resolution.set(width, height); // Set resolution
-
-    const linkMeshes: Line2[] = [];
-
-    // Animation loop
+    // --- Animation Loop ---
     const animate = () => {
       requestAnimationFrame(animate);
-
-      controls.update(); // required if damping is enabled
-
+      controls.update();
       simulation.tick();
 
-      // Update node positions from simulation
-      const currentPositions = nodePoints.geometry.attributes.position
+      // Update node positions and colors
+      const positions = nodePoints.geometry.attributes.position
         .array as Float32Array;
+      const colors = nodePoints.geometry.attributes.color.array as Float32Array;
       simulationNodes.forEach((node, i) => {
-        currentPositions[i * 3] = node.x ?? 0;
-        currentPositions[i * 3 + 1] = node.y ?? 0;
-        // z is already 0.1
+        positions[i * 3] = node.x ?? 0;
+        positions[i * 3 + 1] = node.y ?? 0;
+        positions[i * 3 + 2] = 0.1; // z-offset
+        const wfId = getWorkflowId(node.id);
+        const color =
+          wfId && wfId === hoveredWorkflowIdRef.current
+            ? highlightColor
+            : defaultColor;
+        colors[i * 3] = color.r;
+        colors[i * 3 + 1] = color.g;
+        colors[i * 3 + 2] = color.b;
       });
       nodePoints.geometry.attributes.position.needsUpdate = true;
+      nodePoints.geometry.attributes.color.needsUpdate = true;
 
+      // Update labels and check for occlusion
       const newLabels: Label[] = [];
       simulationNodes.forEach(node => {
         if (node.x && node.y) {
-          const vector = new THREE.Vector3(node.x, node.y, 0);
-          vector.project(camera);
-
-          const x = (vector.x * 0.5 + 0.5) * renderer.domElement.clientWidth;
-          const y = (vector.y * -0.5 + 0.5) * renderer.domElement.clientHeight;
-
+          const vector = new THREE.Vector3(node.x, node.y, 0).project(camera);
+          const x = (vector.x * 0.5 + 0.5) * width;
+          const y = (vector.y * -0.5 + 0.5) * height;
           const isOccluded = uiBoundsRef.current.some(
             bound =>
               x > bound.left &&
@@ -321,28 +353,43 @@ const App: React.FC = () => {
           );
 
           if (!isOccluded) {
-            newLabels.push({ name: node.name, x, y, type: node.type });
+            newLabels.push({
+              id: node.id,
+              name: node.name,
+              x,
+              y,
+              type: node.type,
+            });
           }
         }
       });
       setLabels(newLabels);
 
-      // Links need to be recreated each frame
+      // Links need to be recreated each frame for highlighting
       linkMeshes.forEach(link => {
         scene.remove(link);
         link.geometry.dispose();
       });
-      linkMeshes.length = 0; // Clear the array
+      linkMeshes.length = 0;
 
       simulationLinks.forEach(link => {
         const source = link.source as NodeObject;
         const target = link.target as NodeObject;
         if (source.x && source.y && target.x && target.y) {
           const geometry = new LineGeometry();
-          // Keep lines at z=0
           geometry.setPositions([source.x, source.y, 0, target.x, target.y, 0]);
 
-          const line = new Line2(geometry, linkMaterial);
+          const wfId = getWorkflowId(source.id);
+          const isHighlighted = wfId && wfId === hoveredWorkflowIdRef.current;
+
+          // Clone material to set unique color
+          const currentMaterial = linkMaterial.clone();
+          currentMaterial.color = isHighlighted ? highlightColor : defaultColor;
+
+          const line = new Line2(geometry, currentMaterial);
+          if (wfId) {
+            line.userData.workflowId = wfId;
+          }
           scene.add(line);
           linkMeshes.push(line);
         }
@@ -353,27 +400,26 @@ const App: React.FC = () => {
 
     animate();
 
+    // --- Event Listeners and Cleanup ---
     const handleResize = () => {
       if (!mountRef.current) return;
       const mount = mountRef.current;
       camera.aspect = mount.clientWidth / mount.clientHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(mount.clientWidth, mount.clientHeight);
-      linkMaterial.resolution.set(mount.clientWidth, mount.clientHeight); // Update on resize
+      linkMaterial.resolution.set(mount.clientWidth, mount.clientHeight);
       updateUiBounds();
     };
 
     window.addEventListener('resize', handleResize);
-    updateUiBounds(); // Initial call
 
     return () => {
       window.removeEventListener('resize', handleResize);
       renderer.domElement.removeEventListener('wheel', handleWheel);
+      renderer.domElement.removeEventListener('mousemove', handleMouseMove);
       if (mountRef.current && mountRef.current.contains(renderer.domElement)) {
         mountRef.current.removeChild(renderer.domElement);
       }
-
-      // Cleanup simulation
       simulation.stop();
     };
   }, [nodes, links]);
@@ -407,22 +453,28 @@ const App: React.FC = () => {
         onReset={handleReset}
         isGenerating={isGenerating}
       />
-      {labels.map((label, index) => (
-        <div
-          key={index}
-          style={{
-            position: 'absolute',
-            left: label.x,
-            top: label.y,
-            color: label.type === 'Intent' ? 'cyan' : 'white',
-            transform: 'translate(-50%, -50%)',
-            pointerEvents: 'none',
-            textShadow: '1px 1px 2px black',
-          }}
-        >
-          {label.name}
-        </div>
-      ))}
+      {labels.map((label, index) => {
+        const wfId = getWorkflowId(label.id);
+        const isHovered = wfId ? wfId === hoveredWorkflowId : false;
+        return (
+          <div
+            key={index}
+            style={{
+              position: 'absolute',
+              left: label.x,
+              top: label.y,
+              color: label.type === 'Intent' ? 'cyan' : 'white',
+              fontWeight: isHovered ? 'bold' : 'normal',
+              transform: 'translate(-50%, -50%)',
+              pointerEvents: 'none',
+              textShadow: '1px 1px 2px black',
+              padding: '2px 5px',
+            }}
+          >
+            {label.name}
+          </div>
+        );
+      })}
     </div>
   );
 };
