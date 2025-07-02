@@ -191,6 +191,48 @@ export class PathwayManager {
     // For this implementation, we will merge the new workflow into the main graph.
 
     this.graphStore.getGraph().import(remappedGraph.export(), true);
+
+    // --- Start of new feature: Link similar workflows ---
+    const SIMILARITY_THRESHOLD_FOR_LINKING = 0.7;
+    const k = 5; // Check top 5 for potential links
+
+    console.log(
+      `[Manager] Searching for similar intents to link to "${originalQuery}"`
+    );
+    const similarIntents = await this.vectorStore.findSimilarIntentions(
+      originalQuery,
+      k
+    );
+
+    if (similarIntents && similarIntents.ids.length > 1) {
+      // more than just the one we added
+      for (let i = 0; i < similarIntents.ids.length; i++) {
+        const similarVectorId = similarIntents.ids[i];
+        const similarity = 1 - similarIntents.distances[i];
+
+        // Don't link to itself
+        if (similarVectorId === vectorId) continue;
+
+        if (similarity >= SIMILARITY_THRESHOLD_FOR_LINKING) {
+          const existingIntentNode =
+            this.graphStore.findIntentNodeByVectorId(similarVectorId);
+          if (existingIntentNode && intentNodeId) {
+            console.log(
+              `[Manager] Linking new workflow to existing one with similarity: ${similarity.toFixed(
+                4
+              )}`
+            );
+            this.graphStore
+              .getGraph()
+              .addDirectedEdge(intentNodeId, existingIntentNode, {
+                type: 'Similarity',
+              });
+          }
+        }
+      }
+    }
+    // --- End of new feature ---
+
     await this.graphStore.saveGraph();
 
     console.log(`[Manager] Workflow retained with new vectorId: ${vectorId}`);

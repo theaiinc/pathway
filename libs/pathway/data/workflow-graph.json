@@ -542,6 +542,210 @@
           "importance": "Closures are essential in JavaScript as they enable powerful programming patterns, like encapsulation and factory functions."
         }
       }
+    },
+    {
+      "key": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__intent_node",
+      "attributes": {
+        "id": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__intent_node",
+        "type": "Intent",
+        "label": "what to do before creating a simple web server?",
+        "vectorId": "eb9ffdf0-a176-4110-abbc-c65a34c42308"
+      }
+    },
+    {
+      "key": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__step_1",
+      "attributes": {
+        "id": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__step_1",
+        "type": "Step",
+        "label": "Choose a programming language",
+        "action": "select_language",
+        "parameters": {
+          "languages": [
+            "Node.js",
+            "Python",
+            "Ruby",
+            "Java",
+            "PHP"
+          ]
+        }
+      }
+    },
+    {
+      "key": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__step_2",
+      "attributes": {
+        "id": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__step_2",
+        "type": "Step",
+        "label": "Decide on a framework or libraries to use",
+        "action": "select_framework",
+        "parameters": {
+          "options": [
+            "Express",
+            "Flask",
+            "Ruby on Rails",
+            "Spring",
+            "Laravel"
+          ]
+        }
+      }
+    },
+    {
+      "key": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__step_3",
+      "attributes": {
+        "id": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__step_3",
+        "type": "Step",
+        "label": "Set up a development environment",
+        "action": "setup_environment",
+        "parameters": {
+          "requirements": [
+            "Install appropriate software",
+            "Configure text editor/IDE"
+          ]
+        }
+      }
+    },
+    {
+      "key": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__step_4",
+      "attributes": {
+        "id": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__step_4",
+        "type": "Step",
+        "label": "Create the project directory structure",
+        "action": "create_directory_structure",
+        "parameters": {
+          "structure": [
+            "src",
+            "public",
+            "views",
+            "config"
+          ]
+        }
+      }
+    },
+    {
+      "key": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__step_5",
+      "attributes": {
+        "id": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__step_5",
+        "type": "Step",
+        "label": "Write the server code",
+        "action": "write_code",
+        "parameters": {
+          "description": "Implement the basic web server functionality"
+        }
+      }
+    },
+    {
+      "key": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__step_6",
+      "attributes": {
+        "id": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__step_6",
+        "type": "Step",
+        "label": "Test the web server",
+        "action": "run_tests",
+        "parameters": {
+          "tests": [
+            "Access the root endpoint",
+            "Check response status"
+          ]
+        }
+      }
+    },
+    {
+      "key": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__step_7",
+      "attributes": {
+        "id": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__step_7",
+        "type": "Step",
+        "label": "Deploy the web server",
+        "action": "deploy_server",
+        "parameters": {
+          "options": [
+            "Localhost",
+            "Cloud services like Heroku or AWS"
+          ]
+        }
+      }
+    },
+    {
+      "key": "dbc5a0f0-e43d-40b3-b8c7-938f787aaad3__intent_node",
+      "attributes": {
+        "id": "dbc5a0f0-e43d-40b3-b8c7-938f787aaad3__intent_node",
+        "type": "Intent",
+        "label": "What to do before creating a simple web server?",
+        "vectorId": "dfbdae35-5c05-4b1a-9379-59ab3a19bc21"
+      }
+    },
+    {
+      "key": "dbc5a0f0-e43d-40b3-b8c7-938f787aaad3__step_1",
+      "attributes": {
+        "id": "dbc5a0f0-e43d-40b3-b8c7-938f787aaad3__step_1",
+        "type": "Step",
+        "label": "Choose a programming language",
+        "action": "define_language",
+        "parameters": {
+          "options": [
+            "JavaScript (Node.js)",
+            "Python",
+            "Ruby",
+            "Go"
+          ]
+        }
+      }
+    },
+    {
+      "key": "dbc5a0f0-e43d-40b3-b8c7-938f787aaad3__step_2",
+      "attributes": {
+        "id": "dbc5a0f0-e43d-40b3-b8c7-938f787aaad3__step_2",
+        "type": "Step",
+        "label": "Identify web framework or library",
+        "action": "define_framework",
+        "parameters": {
+          "language": "Node.js",
+          "options": [
+            "Express",
+            "http",
+            "Koa"
+          ]
+        }
+      }
+    },
+    {
+      "key": "dbc5a0f0-e43d-40b3-b8c7-938f787aaad3__step_3",
+      "attributes": {
+        "id": "dbc5a0f0-e43d-40b3-b8c7-938f787aaad3__step_3",
+        "type": "Step",
+        "label": "Set up your development environment",
+        "action": "setup_environment",
+        "parameters": {
+          "instructions": "Install necessary software and create a project directory."
+        }
+      }
+    },
+    {
+      "key": "dbc5a0f0-e43d-40b3-b8c7-938f787aaad3__step_4",
+      "attributes": {
+        "id": "dbc5a0f0-e43d-40b3-b8c7-938f787aaad3__step_4",
+        "type": "Step",
+        "label": "Determine server requirements",
+        "action": "define_requirements",
+        "parameters": {
+          "requirements": [
+            "Port number",
+            "Assets handling",
+            "Middleware",
+            "Routing"
+          ]
+        }
+      }
+    },
+    {
+      "key": "dbc5a0f0-e43d-40b3-b8c7-938f787aaad3__step_5",
+      "attributes": {
+        "id": "dbc5a0f0-e43d-40b3-b8c7-938f787aaad3__step_5",
+        "type": "Step",
+        "label": "Create a basic server file",
+        "action": "create_server_file",
+        "parameters": {
+          "filename": "server.js",
+          "example_code": "const http = require('http'); const server = http.createServer((req, res) => { res.end('Hello World!'); }); server.listen(3000);"
+        }
+      }
     }
   ],
   "edges": [
@@ -831,6 +1035,118 @@
       "target": "55a701d8-3b1e-4dbf-bc19-0052df607b91__step_4",
       "attributes": {
         "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_146_0",
+      "source": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__intent_node",
+      "target": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__step_1",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_146_1",
+      "source": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__step_1",
+      "target": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__step_2",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_146_2",
+      "source": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__step_2",
+      "target": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__step_3",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_146_3",
+      "source": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__step_3",
+      "target": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__step_4",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_146_4",
+      "source": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__step_4",
+      "target": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__step_5",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_146_5",
+      "source": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__step_5",
+      "target": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__step_6",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_146_6",
+      "source": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__step_6",
+      "target": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__step_7",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_232_0",
+      "source": "dbc5a0f0-e43d-40b3-b8c7-938f787aaad3__intent_node",
+      "target": "dbc5a0f0-e43d-40b3-b8c7-938f787aaad3__step_1",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_232_1",
+      "source": "dbc5a0f0-e43d-40b3-b8c7-938f787aaad3__step_1",
+      "target": "dbc5a0f0-e43d-40b3-b8c7-938f787aaad3__step_2",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_232_2",
+      "source": "dbc5a0f0-e43d-40b3-b8c7-938f787aaad3__step_2",
+      "target": "dbc5a0f0-e43d-40b3-b8c7-938f787aaad3__step_3",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_232_3",
+      "source": "dbc5a0f0-e43d-40b3-b8c7-938f787aaad3__step_3",
+      "target": "dbc5a0f0-e43d-40b3-b8c7-938f787aaad3__step_4",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_232_4",
+      "source": "dbc5a0f0-e43d-40b3-b8c7-938f787aaad3__step_4",
+      "target": "dbc5a0f0-e43d-40b3-b8c7-938f787aaad3__step_5",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_227_0",
+      "source": "dbc5a0f0-e43d-40b3-b8c7-938f787aaad3__intent_node",
+      "target": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__intent_node",
+      "attributes": {
+        "type": "Similarity"
+      }
+    },
+    {
+      "key": "geid_227_1",
+      "source": "dbc5a0f0-e43d-40b3-b8c7-938f787aaad3__intent_node",
+      "target": "9056702e-29fc-4771-822b-48c4619b5a06__intent_node",
+      "attributes": {
+        "type": "Similarity"
       }
     }
   ]

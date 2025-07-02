@@ -20,6 +20,7 @@ interface Node {
 interface Edge {
   source: string;
   target: string;
+  type?: string;
 }
 
 interface NodeObject extends d3.SimulationNodeDatum {
@@ -33,6 +34,7 @@ interface NodeObject extends d3.SimulationNodeDatum {
 interface LinkObject extends d3.SimulationLinkDatum<NodeObject> {
   source: string | NodeObject;
   target: string | NodeObject;
+  type?: string;
 }
 
 interface Label {
@@ -140,7 +142,11 @@ const App: React.FC = () => {
         if (data && data.nodes) {
           setNodes(data.nodes.map(n => ({ id: n.key, ...n.attributes })));
           setLinks(
-            data.edges.map(e => ({ source: e.source, target: e.target }))
+            data.edges.map(e => ({
+              source: e.source,
+              target: e.target,
+              ...(e.attributes as object),
+            }))
           );
         } else {
           setNodes([]);
@@ -169,6 +175,7 @@ const App: React.FC = () => {
         data.graph.edges.map((e: GraphologyEdge) => ({
           source: e.source,
           target: e.target,
+          ...(e.attributes as object),
         }))
       );
       if (data.highlightedNodeId) {
@@ -538,8 +545,9 @@ const App: React.FC = () => {
     }
 
     // --- Animation Loop ---
+    let animationFrameId: number;
     const animate = () => {
-      requestAnimationFrame(animate);
+      animationFrameId = requestAnimationFrame(animate);
       controls.update();
       simulation.tick();
 
@@ -613,6 +621,10 @@ const App: React.FC = () => {
       linkMeshes.forEach(link => {
         scene.remove(link);
         link.geometry.dispose();
+        // FIX: Dispose of the cloned material to prevent memory leak
+        if (link.material) {
+          (link.material as THREE.Material).dispose();
+        }
       });
       linkMeshes.length = 0;
 
@@ -633,6 +645,16 @@ const App: React.FC = () => {
           // Clone material to set unique color
           const currentMaterial = linkMaterial.clone();
           currentMaterial.color = isHighlighted ? highlightColor : defaultColor;
+          currentMaterial.opacity = isHighlighted ? 1.0 : 0.6;
+
+          // Style for similarity links
+          if (link.type === 'Similarity') {
+            currentMaterial.dashed = true;
+            currentMaterial.dashSize = 3;
+            currentMaterial.gapSize = 3;
+            currentMaterial.color = new THREE.Color(0x555555); // Dark grey
+            currentMaterial.opacity = 0.8;
+          }
 
           const line = new Line2(geometry, currentMaterial);
           if (wfId) {
@@ -662,6 +684,9 @@ const App: React.FC = () => {
     window.addEventListener('resize', handleResize);
 
     return () => {
+      // FIX: Comprehensive cleanup to prevent memory leaks on re-render
+      cancelAnimationFrame(animationFrameId);
+
       window.removeEventListener('resize', handleResize);
       renderer.domElement.removeEventListener('wheel', handleWheel);
       renderer.domElement.removeEventListener('mousemove', handleMouseMove);
@@ -673,6 +698,28 @@ const App: React.FC = () => {
         'mouseup',
         handleMouseUp as EventListener
       );
+
+      // Properly dispose of Three.js objects
+      scene.traverse(object => {
+        if (
+          object instanceof THREE.Mesh ||
+          object instanceof Line2 ||
+          object instanceof THREE.Points
+        ) {
+          if (object.geometry) {
+            object.geometry.dispose();
+          }
+          if (object.material) {
+            (object.material as THREE.Material).dispose();
+          }
+        }
+      });
+
+      controls.dispose();
+      linkMaterial.dispose();
+      nodeMaterial.dispose();
+      renderer.dispose();
+
       if (mountRef.current && mountRef.current.contains(renderer.domElement)) {
         mountRef.current.removeChild(renderer.domElement);
       }
