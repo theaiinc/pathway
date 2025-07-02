@@ -1,8 +1,15 @@
-import pkg from 'graphology';
-const { MultiGraph } = pkg;
-import { v4 as uuidv4 } from 'uuid';
+import pkg, { type MultiGraph } from 'graphology';
+const { MultiGraph: MultiGraphImpl } = pkg;
 import { bfsFromNode } from 'graphology-traversal';
+import { v4 as uuidv4 } from 'uuid';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 import { subgraph } from 'graphology-operators';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const GRAPH_FILE_PATH = path.join(__dirname, '../../data/workflow-graph.json');
 
 // --- Graph Schema Definitions ---
 
@@ -32,15 +39,53 @@ export type GraphNode = IntentNode | StepNode; // Will expand with SubTask, Deci
 // --- GraphStore Service ---
 
 export class GraphStore {
-  private graph: import('graphology').MultiGraph;
+  private graph: MultiGraph;
 
   constructor() {
-    this.graph = new MultiGraph({ multi: true }); // Allow parallel edges
+    this.graph = new MultiGraphImpl();
+    this.loadGraph().catch(err => {
+      // If the file doesn't exist, it's okay. We'll start with a new graph.
+      if (err instanceof Error && 'code' in err && err.code !== 'ENOENT') {
+        console.error('Error loading graph on initialization:', err);
+      }
+    });
   }
 
-  addNode(node: GraphNode): string {
+  async saveGraph(): Promise<void> {
+    try {
+      const serializedGraph = this.graph.export();
+      const data = JSON.stringify(serializedGraph, null, 2);
+      await fs.writeFile(GRAPH_FILE_PATH, data, 'utf-8');
+      console.log(`[GraphStore] Graph saved to ${GRAPH_FILE_PATH}`);
+    } catch (error) {
+      console.error('[GraphStore] Error saving graph:', error);
+    }
+  }
+
+  async loadGraph(): Promise<void> {
+    try {
+      const data = await fs.readFile(GRAPH_FILE_PATH, 'utf-8');
+      const serializedGraph = JSON.parse(data);
+      this.graph.import(serializedGraph);
+      console.log(`[GraphStore] Graph loaded from ${GRAPH_FILE_PATH}`);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        'code' in error &&
+        error.code === 'ENOENT'
+      ) {
+        console.log(
+          `[GraphStore] No existing graph file found at ${GRAPH_FILE_PATH}. Starting fresh.`
+        );
+      } else {
+        console.error('[GraphStore] Error loading graph:', error);
+        throw error;
+      }
+    }
+  }
+
+  addNode(node: GraphNode): void {
     this.graph.addNode(node.id, { ...node });
-    return node.id;
   }
 
   getNode(id: string): GraphNode | undefined {
@@ -50,22 +95,8 @@ export class GraphStore {
     return this.graph.getNodeAttributes(id) as GraphNode;
   }
 
-  addEdge(
-    sourceId: string,
-    targetId: string,
-    type: EdgeType,
-    properties: object = {}
-  ): string | null {
-    if (!this.graph.hasNode(sourceId) || !this.graph.hasNode(targetId)) {
-      console.error(
-        'Cannot create edge: source or target node does not exist.'
-      );
-      return null;
-    }
-    // graphology edge keys are auto-generated, but we can add our own id
-    const edgeId = uuidv4();
-    this.graph.addEdge(sourceId, targetId, { id: edgeId, type, ...properties });
-    return edgeId;
+  addEdge(source: string, target: string, type: string): void {
+    this.graph.addDirectedEdge(source, target, { type });
   }
 
   getWorkflowSubgraph(
@@ -91,52 +122,57 @@ export class GraphStore {
     return subgraph(this.graph, Array.from(visited));
   }
 
-  getGraph(): import('graphology').MultiGraph {
+  getGraph(): MultiGraph {
     return this.graph;
   }
 
   findIntentNodeByVectorId(vectorId: string): string | null {
-    for (const node of this.graph.nodes()) {
-      const attrs = this.graph.getNodeAttributes(node);
-      if (attrs.type === 'Intent' && attrs.vectorId === vectorId) {
-        return node;
-      }
-    }
-    return null;
+    return (
+      this.graph.findNode(
+        (node: string, attrs: any) => attrs.vectorId === vectorId
+      ) || null
+    );
   }
 
-  getWorkflowByIntentNode(
-    startNodeId: string
-  ): import('graphology').MultiGraph {
+  getWorkflowByIntentNode(startNodeId: string): MultiGraph {
     const nodesInWorkflow: string[] = [];
-    bfsFromNode(this.graph, startNodeId, (node: string) => {
-      nodesInWorkflow.push(node);
-    });
+    bfsFromNode(
+      this.graph,
+      startNodeId,
+      (node: string, attributes: any, depth: number) => {
+        nodesInWorkflow.push(node);
+      }
+    );
     return subgraph(this.graph, nodesInWorkflow);
   }
 
-  // Example of linking to the vector store
   createWorkflow(
-    intentQuery: string,
+    intent: string,
     vectorId: string,
-    steps: StepNode[]
+    steps: Array<{
+      id: string;
+      type: 'Step';
+      label: string;
+      action: string;
+      parameters: object;
+    }>
   ): void {
-    const intentNode: IntentNode = {
-      id: uuidv4(),
+    const intentNodeId = uuidv4();
+    this.graph.addNode(intentNodeId, {
       type: 'Intent',
-      label: `Intent: ${intentQuery.substring(0, 30)}...`,
-      originalQuery: intentQuery,
-      vectorId: vectorId,
-    };
-    this.addNode(intentNode);
+      label: intent,
+      vectorId,
+    });
 
-    let previousNodeId = intentNode.id;
-    for (const step of steps) {
-      this.addNode(step);
-      this.addEdge(previousNodeId, step.id, 'HAS_STEP');
-      previousNodeId = step.id;
-    }
-    console.log(`Created new workflow for intent: ${intentQuery}`);
+    let previousNodeId = intentNodeId;
+    steps.forEach((step, index) => {
+      const stepNodeId = step.id;
+      this.graph.addNode(stepNodeId, { ...step });
+      this.graph.addDirectedEdge(previousNodeId, stepNodeId, { type: 'Flow' });
+      previousNodeId = stepNodeId;
+    });
+    console.log(`[GraphStore] Created new workflow for intent: ${intent}`);
+    this.saveGraph(); // Auto-save after creating a workflow
   }
 
   // Helper to find an intent node by its original query

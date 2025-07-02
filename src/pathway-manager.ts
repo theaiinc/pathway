@@ -1,9 +1,9 @@
 import { VectorStore } from './vector-store.js';
 import { GraphStore } from './graph-store.js';
 import { v4 as uuidv4 } from 'uuid';
-import pkg from 'graphology';
+import pkg, { type MultiGraph } from 'graphology';
 import { WorkflowExecutor } from './workflow-executor.js';
-const { MultiGraph } = pkg;
+const { MultiGraph: MultiGraphImpl } = pkg;
 
 const azureOpenAIApiKey = process.env.AZURE_OPENAI_API_KEY;
 const azureOpenAIApiEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
@@ -37,14 +37,13 @@ export class PathwayManager {
    * @param query The user's query.
    * @returns A workflow subgraph or null if not found.
    */
-  async findSimilarWorkflow(
-    query: string
-  ): Promise<import('graphology').MultiGraph | null> {
+  async findSimilarWorkflow(query: string): Promise<MultiGraph | null> {
     console.log(`\n[Manager] Retrieving similar workflow for: "${query}"`);
 
+    const k = 3; // Retrieve top 3 candidates
     const similarIntentions = await this.vectorStore.findSimilarIntentions(
       query,
-      1
+      k
     );
 
     if (!similarIntentions || similarIntentions.ids.length === 0) {
@@ -52,41 +51,53 @@ export class PathwayManager {
       return this.generateNewWorkflow(query);
     }
 
-    const topVectorId = similarIntentions.ids[0];
-    const topDistance = similarIntentions.distances[0];
-    const similarity = 1 - topDistance; // Convert distance to similarity
-    const similarityThreshold = 0.75;
+    // Score and rank the candidates
+    let bestWorkflow: MultiGraph | null = null;
+    let bestScore = -Infinity;
 
     console.log(
-      `[Manager] Found top match with vectorId: ${topVectorId} (Similarity: ${similarity.toFixed(
-        4
-      )})`
+      `[Manager] Scoring ${similarIntentions.ids.length} candidates...`
     );
+    for (let i = 0; i < similarIntentions.ids.length; i++) {
+      const vectorId = similarIntentions.ids[i];
+      const distance = similarIntentions.distances[i];
+      const similarity = 1 - distance;
 
-    if (similarity < similarityThreshold) {
-      console.log(
-        `[Manager] Similarity is below threshold of ${similarityThreshold}. Generating new workflow.`
-      );
-      return this.generateNewWorkflow(query);
+      const intentNode = this.graphStore.findIntentNodeByVectorId(vectorId);
+      if (intentNode) {
+        const workflow = this.graphStore.getWorkflowByIntentNode(intentNode);
+        const score = this.scoreWorkflow(workflow, similarity);
+        console.log(
+          `[Manager] -> Candidate ${i + 1}: score=${score.toFixed(
+            4
+          )} (sim: ${similarity.toFixed(4)}, complexity: ${
+            workflow.order
+          } nodes)`
+        );
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestWorkflow = workflow;
+        }
+      }
     }
 
-    const intentNode = this.graphStore.findIntentNodeByVectorId(topVectorId);
-    if (intentNode) {
+    const similarityThreshold = 0.75;
+    if (bestWorkflow && bestScore >= similarityThreshold) {
       console.log(
-        `[Manager] Found corresponding IntentNode in GraphStore: ${this.graphStore
-          .getGraph()
-          .getNodeAttribute(intentNode, 'label')}`
+        `[Manager] Selecting best workflow with score: ${bestScore.toFixed(4)}`
       );
-      const workflow = this.graphStore.getWorkflowByIntentNode(intentNode);
-      console.log(
-        `[Manager] Successfully retrieved workflow with ${workflow.order} nodes.`
-      );
-      return workflow;
+      return bestWorkflow;
     } else {
-      console.log(
-        `[Manager] Could not find a workflow in GraphStore for vectorId: ${topVectorId}`
-      );
-      return null;
+      if (bestWorkflow) {
+        console.log(
+          `[Manager] Best candidate score (${bestScore.toFixed(
+            4
+          )}) is below threshold of ${similarityThreshold}.`
+        );
+      }
+      console.log(`[Manager] Generating new workflow.`);
+      return this.generateNewWorkflow(query);
     }
   }
 
@@ -98,144 +109,103 @@ export class PathwayManager {
    * @returns A new, adapted workflow graph.
    */
   async adaptWorkflow(
-    workflow: import('graphology').MultiGraph,
+    workflow: MultiGraph,
     query: string
-  ): Promise<import('graphology').MultiGraph> {
+  ): Promise<MultiGraph> {
     console.log(`\n[Manager] Adapting workflow...`);
-    const newWorkflow = workflow.copy();
+    const newWorkflow = new MultiGraphImpl();
+    newWorkflow.import(workflow.export());
+    // Placeholder for actual LLM-based adaptation logic
     console.log('[Manager] Placeholder adaptation complete (workflow cloned).');
     return newWorkflow;
   }
 
-  async generateNewWorkflow(
-    query: string
-  ): Promise<import('graphology').MultiGraph | null> {
+  async retainWorkflow(
+    workflow: MultiGraph,
+    originalQuery: string
+  ): Promise<void> {
+    console.log(
+      `[Manager] Retaining new workflow for query: "${originalQuery}"`
+    );
+    const vectorId = await this.vectorStore.addIntention(originalQuery);
+
+    const intentNode = workflow.findNode(
+      node => workflow.getNodeAttribute(node, 'type') === 'Intent'
+    );
+    if (!intentNode) {
+      console.error('[Manager] Cannot retain workflow: Intent node not found.');
+      return;
+    }
+
+    // Update the intent node with the new vectorId and the original query
+    workflow.setNodeAttribute(intentNode, 'vectorId', vectorId);
+    workflow.setNodeAttribute(intentNode, 'label', originalQuery);
+
+    // This is a simplified "retain" step. We're assuming the new workflow
+    // is being added to the graph store. In a real system, you might merge it.
+    // For now, let's assume `generateNewWorkflow` created a detached graph
+    // and we need to add its components to the main graph.
+
+    // The GraphStore's `createWorkflow` (or a new `addWorkflow` method)
+    // would be responsible for serializing this. Let's ensure the graph store handles it.
+    // For this implementation, we will merge the new workflow into the main graph.
+
+    this.graphStore.getGraph().import(workflow.export());
+    await this.graphStore.saveGraph();
+
+    console.log(`[Manager] Workflow retained with new vectorId: ${vectorId}`);
+  }
+
+  private scoreWorkflow(workflow: MultiGraph, similarity: number): number {
+    const complexity = workflow.order; // Number of nodes
+    const complexityPenalty = 0.05 * complexity; // Penalize by 0.05 for each node
+
+    // The final score is the similarity minus a penalty for complexity.
+    // This favors simpler workflows, especially when similarity scores are close.
+    const score = similarity - complexityPenalty;
+
+    return score;
+  }
+
+  async generateNewWorkflow(query: string): Promise<MultiGraph | null> {
     console.log(`\n[Manager] Generating new workflow for query: "${query}"`);
 
-    const prompt = `
-You are a helpful assistant that designs a sequence of steps (a workflow) to solve a user's query.
-The user's query is: "${query}"
+    const llmResponse = await this.vectorStore.generateWorkflow(query);
 
-Please respond with a JSON object that represents this workflow. The JSON object should have a single root key "workflow" which contains two arrays: "nodes" and "edges".
-
-- Each object in the "nodes" array should have an "id" (a unique string like "node1", "node2"), a "type" ("Intent" for the first node, "Step" for all others), and a "label" (a descriptive title).
-- The "Intent" node represents the user's goal.
-- Each "Step" node represents an action to be taken and should include an "action" and "parameters" object.
-- Each object in the "edges" array should define a directed link between nodes, with "source" and "target" properties corresponding to the node "id"s, and a "type" of "HAS_STEP".
-
-Example for a query "read a file in nodejs":
-{
-  "workflow": {
-    "nodes": [
-      {
-        "id": "intent_node",
-        "type": "Intent",
-        "label": "Intent: Read a file in Node.js"
-      },
-      {
-        "id": "step_1",
-        "type": "Step",
-        "label": "Import fs module",
-        "action": "execute_shell_command",
-        "parameters": {
-          "command": "const fs = require('fs');"
-        }
-      },
-      {
-        "id": "step_2",
-        "type": "Step",
-        "label": "Use fs.readFile",
-        "action": "execute_shell_command",
-        "parameters": {
-          "command": "fs.readFile('/path/to/file.txt', 'utf8', (err, data) => { if (err) throw err; console.log(data); });"
-        }
-      }
-    ],
-    "edges": [
-      {
-        "source": "intent_node",
-        "target": "step_1",
-        "type": "HAS_STEP"
-      },
-      {
-        "source": "step_1",
-        "target": "step_2",
-        "type": "HAS_STEP"
-      }
-    ]
-  }
-}
-`;
-
-    console.log('[Manager] Prompting LLM for new workflow...');
-    const url = `${azureOpenAIApiEndpoint}openai/deployments/${azureOpenAIChatDeploymentName}/chat/completions?api-version=${azureOpenAIApiVersion}`;
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'api-key': azureOpenAIApiKey!,
-      },
-      body: JSON.stringify({
-        messages: [{ role: 'user', content: prompt }],
-        response_format: { type: 'json_object' },
-      }),
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      console.error(
-        `[Manager] LLM call failed with status ${response.status}:`,
-        errorBody
-      );
+    if (!llmResponse) {
+      console.error('[Manager] Failed to get a response from the LLM.');
       return null;
     }
 
-    const responseData = await response.json();
-    const llmResponse = responseData.choices[0].message?.content;
-    console.log('[Manager] LLM response received.');
-
     try {
       const workflowData = JSON.parse(llmResponse).workflow;
-      const newGraph = new MultiGraph();
+      const newGraph = new MultiGraphImpl();
 
       // Add nodes
-      for (const node of workflowData.nodes) {
-        newGraph.addNode(node.id, {
-          type: node.type,
-          label: node.label,
-          action: node.action,
-          parameters: node.parameters,
-          id: node.id, // Storing id inside attributes as well
-        });
-      }
+      workflowData.nodes.forEach((node: any) => {
+        newGraph.addNode(node.id, { ...node });
+      });
 
       // Add edges
-      for (const edge of workflowData.edges) {
-        newGraph.addEdge(edge.source, edge.target, { type: edge.type });
-      }
+      workflowData.edges.forEach((edge: any) => {
+        newGraph.addDirectedEdge(edge.source, edge.target, { type: 'Flow' });
+      });
 
       console.log(
         `[Manager] Successfully parsed and created new workflow graph with ${newGraph.order} nodes.`
       );
-
-      // Optional: Retain this new workflow for future use.
-      // For now, we just return it. The caller can decide to retain it.
-
       return newGraph;
     } catch (error) {
       console.error(
-        '[Manager] Failed to parse LLM response or build graph:',
+        '[Manager] Error parsing LLM response for new workflow:',
         error
       );
-      console.log('LLM Response was:', llmResponse);
+      console.log('[Manager] Raw LLM Response:', llmResponse);
       return null;
     }
   }
 
-  async executeAndReviseWorkflow(
-    workflow: import('graphology').MultiGraph
-  ): Promise<boolean> {
+  async executeAndReviseWorkflow(workflow: MultiGraph): Promise<boolean> {
     const executor = new WorkflowExecutor();
 
     const startNode = workflow.findNode(

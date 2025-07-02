@@ -1,83 +1,51 @@
-import { VectorStore } from './vector-store.js';
-import { GraphStore, StepNode } from './graph-store.js';
 import { PathwayManager } from './pathway-manager.js';
-import { v4 as uuidv4 } from 'uuid';
-
-export { VectorStore, GraphStore, PathwayManager };
+import { VectorStore } from './vector-store.js';
+import { GraphStore } from './graph-store.js';
 
 async function main() {
   console.log('--- Initializing Stores & Manager ---');
+  // Initialize stores. The GraphStore will now automatically load the graph if it exists.
   const vectorStore = new VectorStore();
-  await vectorStore.initialize();
-  await vectorStore.clearCollection(); // Start fresh
-
   const graphStore = new GraphStore();
   const pathwayManager = new PathwayManager(vectorStore, graphStore);
+
   console.log('Stores and Manager initialized.');
 
-  // --- Step 1: Create an initial workflow to populate the knowledge base ---
-  console.log('\n--- Step 1: Create an initial workflow ---');
-  const initialQuery = 'How do I read a file in node?';
-  const vectorId = await vectorStore.addIntention(initialQuery);
-  graphStore.createWorkflow(initialQuery, vectorId, [
-    {
-      id: uuidv4(),
-      type: 'Step',
-      label: 'Import fs promises',
-      action: 'import_module',
-      parameters: { module: 'fs/promises' },
-    },
-    {
-      id: uuidv4(),
-      type: 'Step',
-      label: 'Use fs.readFile',
-      action: 'call_function',
-      parameters: {
-        function: 'fs.readFile',
-        args: ['/path/to/file.txt', 'utf8'],
-      },
-    },
-  ]);
-  console.log('Initial workflow created.');
+  // --- Check existing workflows and add a new one if needed ---
+  console.log('\n--- Checking for a "file writing" workflow ---');
 
-  // --- Step 2: Test the "Retrieve" and "Adapt" cycle ---
-  console.log('\n--- Step 2: Retrieve and Adapt ---');
-  const secondQuery = 'How can I open a file using nodejs?';
-  const retrievedWorkflow = await pathwayManager.findSimilarWorkflow(
-    secondQuery
-  );
+  const query = 'How to write to a file in Node.js?';
+  const existingWorkflow = await pathwayManager.findSimilarWorkflow(query);
 
-  if (retrievedWorkflow) {
-    const adaptedWorkflow = await pathwayManager.adaptWorkflow(
-      retrievedWorkflow,
-      secondQuery
-    );
+  if (existingWorkflow) {
     console.log(
-      `[Manager] Adaptation complete. Workflow has ${adaptedWorkflow.order} nodes.`
+      '\n✅ A suitable workflow already exists in the graph. Run complete.'
+    );
+    const intentLabel = existingWorkflow.getNodeAttribute(
+      existingWorkflow.findNode(
+        node => existingWorkflow.getNodeAttribute(node, 'type') === 'Intent'
+      ),
+      'label'
+    );
+    console.log(`-> Found workflow with intent: "${intentLabel}"`);
+    console.log(
+      'To test adding a new workflow, delete data/workflow-graph.json and run again.'
     );
   } else {
-    console.log('❌ Retrieval failed.');
-  }
-
-  // --- Step 3: Test "Generate" for a completely new query ---
-  console.log('\n--- Step 3: Generate a new workflow ---');
-  const generationQuery =
-    'How do I plot a sine wave using matplotlib in Python?';
-  const newWorkflow = await pathwayManager.findSimilarWorkflow(generationQuery);
-
-  if (newWorkflow) {
     console.log(
-      `\n✅ Generation successful! New workflow has ${newWorkflow.order} nodes.`
+      '\n"File writing" workflow not found. Creating and retaining a new one.'
     );
-    newWorkflow.forEachNode((node, attrs) => {
-      console.log(`- Node ${node} (${attrs.label}):`, attrs);
-    });
 
-    // --- Step 4: Execute the newly generated workflow ---
-    console.log('\n--- Step 4: Execute the new workflow ---');
-    await pathwayManager.executeAndReviseWorkflow(newWorkflow);
-  } else {
-    console.log('\n❌ Generation failed.');
+    // Use the generate and retain mechanism
+    const newWorkflow = await pathwayManager.generateNewWorkflow(query);
+    if (newWorkflow) {
+      await pathwayManager.retainWorkflow(newWorkflow, query);
+      console.log(
+        '\n✅ New "file writing" workflow created and retained successfully.'
+      );
+    } else {
+      console.log('\n❌ Failed to generate a new workflow.');
+    }
   }
 }
 
