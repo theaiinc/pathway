@@ -249,25 +249,57 @@ const App: React.FC = () => {
     requestAnimationFrame(animateCamera);
   };
 
-  const handleDeleteWorkflow = (workflowId: string) => {
-    // TODO: Connect to backend endpoint
+  const handleDeleteWorkflow = async (workflowId: string) => {
     const confirmDelete = window.confirm(
       `Are you sure you want to delete workflow ${workflowId}?`
     );
     if (confirmDelete) {
-      const newNodes = nodes.filter(
-        node => getWorkflowId(node.id) !== workflowId
-      );
-      const newNodeIds = new Set(newNodes.map(n => n.id));
-      const newLinks = links.filter(
-        link =>
-          newNodeIds.has(link.source as string) &&
-          newNodeIds.has(link.target as string)
-      );
+      try {
+        const response = await fetch(`${API_URL}/workflow/${workflowId}`, {
+          method: 'DELETE',
+        });
 
-      setNodes(newNodes);
-      setLinks(newLinks);
-      setSelectedWorkflowId(null);
+        if (!response.ok) {
+          throw new Error(`Server error: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        // Sync frontend with the updated graph from the backend
+        if (data.graph && data.graph.nodes) {
+          setNodes(
+            data.graph.nodes.map((n: GraphologyNode) => ({
+              id: n.key,
+              ...n.attributes,
+            }))
+          );
+          setLinks(
+            data.graph.edges.map((e: GraphologyEdge) => ({
+              source: e.source,
+              target: e.target,
+              ...(e.attributes as object),
+            }))
+          );
+        } else {
+          // Fallback to local removal if something goes wrong with the response
+          const newNodes = nodes.filter(
+            node => getWorkflowId(node.id) !== workflowId
+          );
+          const newNodeIds = new Set(newNodes.map(n => n.id));
+          const newLinks = links.filter(
+            link =>
+              newNodeIds.has(link.source as string) &&
+              newNodeIds.has(link.target as string)
+          );
+          setNodes(newNodes);
+          setLinks(newLinks);
+        }
+      } catch (error) {
+        console.error('Failed to delete workflow:', error);
+        alert(`Error: Could not delete workflow. See console for details.`);
+      } finally {
+        setSelectedWorkflowId(null);
+      }
     }
   };
 
@@ -819,12 +851,20 @@ const App: React.FC = () => {
 
   // --- Delete Workflow Effect ---
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
+    const handleKeyDown = async (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      if (
+        target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')
+      ) {
+        return;
+      }
+
       if (
         (event.key === 'Delete' || event.key === 'Backspace') &&
         selectedWorkflowId
       ) {
-        handleDeleteWorkflow(selectedWorkflowId);
+        await handleDeleteWorkflow(selectedWorkflowId);
       }
     };
     window.addEventListener('keydown', handleKeyDown);

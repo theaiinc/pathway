@@ -87,6 +87,23 @@ app.post('/reset', async (req, res) => {
   }
 });
 
+app.delete('/workflow/:workflowId', async (req, res) => {
+  const { workflowId } = req.params;
+  if (!workflowId) {
+    return res.status(400).send('Workflow ID is required');
+  }
+
+  try {
+    await pathwayManager.deleteWorkflow(workflowId);
+    // Send back the updated graph so the frontend can sync
+    const updatedGraph = graphStore.getGraph().export();
+    res.json({ graph: updatedGraph });
+  } catch (error) {
+    console.error(`Error deleting workflow ${workflowId}:`, error);
+    res.status(500).send('Failed to delete workflow');
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`API server listening on port ${PORT}`);
 });

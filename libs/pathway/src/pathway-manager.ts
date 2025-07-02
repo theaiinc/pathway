@@ -239,6 +239,51 @@ export class PathwayManager {
     return intentNodeId;
   }
 
+  async deleteWorkflow(workflowId: string): Promise<void> {
+    console.log(
+      `[Manager] Attempting to delete workflow with ID: ${workflowId}`
+    );
+
+    const graph = this.graphStore.getGraph();
+    const nodesToDelete: string[] = [];
+    let vectorId: string | null = null;
+
+    // Find all nodes belonging to the workflow and identify the intent's vectorId
+    graph.forEachNode((nodeId, attributes) => {
+      // The workflowId is the prefix of the node's ID
+      if (nodeId.startsWith(workflowId)) {
+        nodesToDelete.push(nodeId);
+        if (attributes.type === 'Intent' && attributes.vectorId) {
+          vectorId = attributes.vectorId as string;
+        }
+      }
+    });
+
+    if (nodesToDelete.length === 0) {
+      console.warn(
+        `[Manager] No nodes found for workflow ID: ${workflowId}. No action taken.`
+      );
+      return;
+    }
+
+    // 1. Delete the intention from the VectorStore
+    if (vectorId) {
+      await this.vectorStore.deleteIntention(vectorId);
+    } else {
+      console.warn(
+        `[Manager] No intent node with a vectorId found for workflow ${workflowId}.`
+      );
+    }
+
+    // 2. Delete the nodes from the GraphStore
+    this.graphStore.deleteNodes(nodesToDelete);
+
+    // 3. Save the updated graph
+    await this.graphStore.saveGraph();
+
+    console.log(`[Manager] Successfully deleted workflow ${workflowId}.`);
+  }
+
   private scoreWorkflow(workflow: MultiGraph, similarity: number): number {
     const complexity = workflow.order; // Number of nodes
     const complexityPenalty = 0.05 * complexity; // Penalize by 0.05 for each node

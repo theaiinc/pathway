@@ -174,4 +174,27 @@ Example for a query "read a file in nodejs":
         : [];
     return { ids: results.ids[0], distances: distances };
   }
+
+  async deleteIntention(vectorId: string): Promise<void> {
+    if (!this.collection) {
+      throw new Error('AstraDB collection is not initialized.');
+    }
+    console.log(`[VectorStore] Deleting vector with id: ${vectorId}`);
+    try {
+      // Note: The 'delete' method in LangChain's AstraDB integration
+      // might expect a filter object or specific IDs depending on the version.
+      // Assuming it accepts an array of IDs to delete.
+      await this.collection.delete([vectorId]);
+      console.log(
+        `[VectorStore] Successfully deleted vector with id: ${vectorId}`
+      );
+    } catch (error) {
+      console.error(
+        `[VectorStore] Error deleting vector id ${vectorId}:`,
+        error
+      );
+      // It's often safe to just log this error and continue,
+      // as the vector might have already been deleted.
+    }
+  }
 }

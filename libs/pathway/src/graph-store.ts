@@ -190,4 +190,13 @@ export class GraphStore {
     }
     return null;
   }
+
+  deleteNodes(nodeIds: string[]): void {
+    nodeIds.forEach(nodeId => {
+      if (this.graph.hasNode(nodeId)) {
+        this.graph.dropNode(nodeId);
+      }
+    });
+    console.log(`[GraphStore] Deleted ${nodeIds.length} nodes.`);
+  }
 }
