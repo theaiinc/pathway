@@ -100,6 +100,7 @@ const App: React.FC = () => {
   const nodePointsRef = useRef<THREE.Points | null>(null);
   const simulationNodesRef = useRef<NodeObject[]>([]);
   const intersectionPointRef = useRef<THREE.Vector3 | null>(null);
+  const isPanningRef = useRef<boolean>(false);
 
   const [labels, setLabels] = useState<Label[]>([]);
   const [nodes, setNodes] = useState<Node[]>([]);
@@ -250,13 +251,22 @@ const App: React.FC = () => {
         ray.intersectPlane(plane, fallbackTarget);
         targetPoint = fallbackTarget;
       }
-
       // Move camera and controls target
       const newCamPos = new THREE.Vector3().lerpVectors(
         camera.position,
         targetPoint,
         1 - zoomAmount
       );
+
+      // Prevent zooming in too close
+      if (direction > 0) {
+        // Direction > 0 is zooming IN
+        const newDistanceToTarget = newCamPos.distanceTo(targetPoint);
+        if (newDistanceToTarget < 1) {
+          return; // Abort zoom-in if it gets too close
+        }
+      }
+
       const delta = new THREE.Vector3().subVectors(newCamPos, camera.position);
       const newTarget = controls.target.clone().add(delta);
 
@@ -326,6 +336,8 @@ const App: React.FC = () => {
     const defaultColor = new THREE.Color(0xffffff); // White
 
     const handleMouseMove = (event: MouseEvent) => {
+      if (isPanningRef.current) return; // Don't update hover while panning
+
       const mouse = new THREE.Vector2(
         (event.clientX / width) * 2 - 1,
         -(event.clientY / height) * 2 + 1
@@ -354,6 +366,30 @@ const App: React.FC = () => {
       }
     };
     renderer.domElement.addEventListener('mousemove', handleMouseMove);
+
+    const handleMouseDown = () => {
+      isPanningRef.current = true;
+      // When clicking on a point, we want to make it the new center of rotation
+      // without causing the view to "jump". To do this, we shift both the
+      // camera and its target by the same amount.
+      if (
+        intersectionPointRef.current &&
+        controlsRef3D.current &&
+        cameraRef.current
+      ) {
+        const controls = controlsRef3D.current;
+        const newTarget = intersectionPointRef.current;
+
+        controls.target.copy(newTarget);
+        controls.update();
+      }
+    };
+    renderer.domElement.addEventListener('mousedown', handleMouseDown);
+
+    const handleMouseUp = () => {
+      isPanningRef.current = false;
+    };
+    renderer.domElement.addEventListener('mouseup', handleMouseUp);
 
     // --- UI Bounds for Occlusion ---
     const updateUiBounds = () => {
@@ -419,9 +455,23 @@ const App: React.FC = () => {
 
       // Update labels and check for occlusion
       const newLabels: Label[] = [];
+      const frustum = new THREE.Frustum();
+      const projScreenMatrix = new THREE.Matrix4();
+      projScreenMatrix.multiplyMatrices(
+        camera.projectionMatrix,
+        camera.matrixWorldInverse
+      );
+      frustum.setFromProjectionMatrix(projScreenMatrix);
+
       simulationNodes.forEach(node => {
         if (node.x && node.y) {
-          const vector = new THREE.Vector3(node.x, node.y, 0).project(camera);
+          const nodePosition = new THREE.Vector3(node.x, node.y, 0);
+
+          if (!frustum.containsPoint(nodePosition)) {
+            return; // Don't render label if node is outside the camera view
+          }
+
+          const vector = nodePosition.clone().project(camera);
           const x = (vector.x * 0.5 + 0.5) * width;
           const y = (vector.y * -0.5 + 0.5) * height;
           const isOccluded = uiBoundsRef.current.some(
@@ -501,6 +551,8 @@ const App: React.FC = () => {
       window.removeEventListener('resize', handleResize);
       renderer.domElement.removeEventListener('wheel', handleWheel);
       renderer.domElement.removeEventListener('mousemove', handleMouseMove);
+      renderer.domElement.removeEventListener('mousedown', handleMouseDown);
+      renderer.domElement.removeEventListener('mouseup', handleMouseUp);
       if (mountRef.current && mountRef.current.contains(renderer.domElement)) {
         mountRef.current.removeChild(renderer.domElement);
       }
