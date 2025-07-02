@@ -106,11 +106,19 @@ export class VectorStore {
     return id;
   }
 
-  async searchSimilarIntentions(queryText: string, k: number = 3) {
+  async findSimilarIntentions(
+    queryText: string,
+    k: number = 3
+  ): Promise<{ ids: string[]; distances: number[] }> {
     const results = await this.collection.query({
       queryTexts: [queryText],
       nResults: k,
     });
-    return results;
+    // Ensure that results for distances are available before returning
+    const distances =
+      results.distances && results.distances.length > 0
+        ? results.distances[0]
+        : [];
+    return { ids: results.ids[0], distances: distances };
   }
 }

@@ -1,6 +1,7 @@
 import pkg from 'graphology';
-const { MultiGraph: Graph } = pkg;
+const { MultiGraph } = pkg;
 import { v4 as uuidv4 } from 'uuid';
+import { bfsFromNode } from 'graphology-traversal';
 import { subgraph } from 'graphology-operators';
 
 // --- Graph Schema Definitions ---
@@ -34,7 +35,7 @@ export class GraphStore {
   private graph: import('graphology').MultiGraph;
 
   constructor() {
-    this.graph = new Graph({ multi: true }); // Allow parallel edges
+    this.graph = new MultiGraph({ multi: true }); // Allow parallel edges
   }
 
   addNode(node: GraphNode): string {
@@ -94,6 +95,26 @@ export class GraphStore {
     return this.graph;
   }
 
+  findIntentNodeByVectorId(vectorId: string): string | null {
+    for (const node of this.graph.nodes()) {
+      const attrs = this.graph.getNodeAttributes(node);
+      if (attrs.type === 'Intent' && attrs.vectorId === vectorId) {
+        return node;
+      }
+    }
+    return null;
+  }
+
+  getWorkflowByIntentNode(
+    startNodeId: string
+  ): import('graphology').MultiGraph {
+    const nodesInWorkflow: string[] = [];
+    bfsFromNode(this.graph, startNodeId, (node: string) => {
+      nodesInWorkflow.push(node);
+    });
+    return subgraph(this.graph, nodesInWorkflow);
+  }
+
   // Example of linking to the vector store
   createWorkflow(
     intentQuery: string,
@@ -116,5 +137,16 @@ export class GraphStore {
       previousNodeId = step.id;
     }
     console.log(`Created new workflow for intent: ${intentQuery}`);
+  }
+
+  // Helper to find an intent node by its original query
+  findIntentNodeByQuery(query: string): string | null {
+    for (const node of this.graph.nodes()) {
+      const attrs = this.graph.getNodeAttributes(node);
+      if (attrs.type === 'Intent' && attrs.originalQuery === query) {
+        return node;
+      }
+    }
+    return null;
   }
 }

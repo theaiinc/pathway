@@ -9,18 +9,17 @@ async function main() {
   console.log('--- Initializing Stores & Manager ---');
   const vectorStore = new VectorStore();
   await vectorStore.initialize();
-  await vectorStore.clearCollection();
+  await vectorStore.clearCollection(); // Start fresh
+
   const graphStore = new GraphStore();
   const pathwayManager = new PathwayManager(vectorStore, graphStore);
   console.log('Stores and Manager initialized.');
 
+  // --- Step 1: Create an initial workflow to populate the knowledge base ---
   console.log('\n--- Step 1: Create an initial workflow ---');
   const initialQuery = 'How do I read a file in node?';
-  const vectorId = await vectorStore.addIntention(initialQuery, {
-    area: 'File System',
-    language: 'Node.js',
-  });
-  const steps: StepNode[] = [
+  const vectorId = await vectorStore.addIntention(initialQuery);
+  graphStore.createWorkflow(initialQuery, vectorId, [
     {
       id: uuidv4(),
       type: 'Step',
@@ -38,55 +37,47 @@ async function main() {
         args: ['/path/to/file.txt', 'utf8'],
       },
     },
-  ];
-  graphStore.createWorkflow(initialQuery, vectorId, steps);
+  ]);
   console.log('Initial workflow created.');
 
-  console.log(
-    "\n--- Step 2: Use Manager to 'Retrieve' the workflow with a similar query ---"
+  // --- Step 2: Test the "Retrieve" and "Adapt" cycle ---
+  console.log('\n--- Step 2: Retrieve and Adapt ---');
+  const secondQuery = 'How can I open a file using nodejs?';
+  const retrievedWorkflow = await pathwayManager.findSimilarWorkflow(
+    secondQuery
   );
-  const newQuery = 'How can I open a file using nodejs?';
-  const retrievedWorkflow = await pathwayManager.findSimilarWorkflow(newQuery);
 
   if (retrievedWorkflow) {
-    console.log(
-      `[Manager] Successfully retrieved workflow with ${retrievedWorkflow.order} nodes.`
-    );
-
-    console.log("\n--- Step 3: Use Manager to 'Adapt' the workflow ---");
     const adaptedWorkflow = await pathwayManager.adaptWorkflow(
       retrievedWorkflow,
-      newQuery
+      secondQuery
     );
     console.log(
-      `[Manager] Adaptation complete. New workflow has ${adaptedWorkflow.order} nodes.`
+      `[Manager] Adaptation complete. Workflow has ${adaptedWorkflow.order} nodes.`
     );
-
-    console.log('\n--- Step 4: Verify Adaptation ---');
-    const stepToVerify = adaptedWorkflow.findNode(
-      node =>
-        adaptedWorkflow.getNodeAttribute(node, 'label') === 'Use fs.readFile'
-    );
-    if (stepToVerify) {
-      const params = adaptedWorkflow.getNodeAttribute(
-        stepToVerify,
-        'parameters'
-      );
-      console.log('Parameters of adapted step:', params);
-      if (params.function !== 'fs.readFile') {
-        console.log(
-          '✅ Verification successful: Step parameters were changed.'
-        );
-      } else {
-        console.log(
-          '❌ Verification failed: Step parameters were not changed.'
-        );
-      }
-    } else {
-      console.log('Could not find step to verify.');
-    }
   } else {
-    console.log('[Manager] Failed to retrieve a similar workflow.');
+    console.log('❌ Retrieval failed.');
+  }
+
+  // --- Step 3: Test "Generate" for a completely new query ---
+  console.log('\n--- Step 3: Generate a new workflow ---');
+  const generationQuery =
+    'How do I plot a sine wave using matplotlib in Python?';
+  const newWorkflow = await pathwayManager.findSimilarWorkflow(generationQuery);
+
+  if (newWorkflow) {
+    console.log(
+      `\n✅ Generation successful! New workflow has ${newWorkflow.order} nodes.`
+    );
+    newWorkflow.forEachNode((node, attrs) => {
+      console.log(`- Node ${node} (${attrs.label}):`, attrs);
+    });
+
+    // --- Step 4: Execute the newly generated workflow ---
+    console.log('\n--- Step 4: Execute the new workflow ---');
+    await pathwayManager.executeAndReviseWorkflow(newWorkflow);
+  } else {
+    console.log('\n❌ Generation failed.');
   }
 }
 
