@@ -1,0 +1,42 @@
+{
+  "workflow": {
+    "nodes": [
+      { "id": "start", "type": "Intent", "label": "Evaluate Data" },
+      { "id": "decision", "type": "Decision", "label": "Is Data Valid?" },
+      { "id": "path_a", "type": "Action", "label": "Process Valid Data" },
+      { "id": "path_b", "type": "Action", "label": "Handle Invalid Data" },
+      { "id": "end", "type": "Result", "label": "Processing Complete" }
+    ],
+    "edges": [
+      { "source": "start", "target": "decision" },
+      { "source": "decision", "target": "path_a" },
+      { "source": "decision", "target": "path_b" },
+      { "source": "path_a", "target": "end" },
+      { "source": "path_b", "target": "end" }
+    ]
+  },
+  "prompts": [
+    {
+      "name": "Valid Data Path",
+      "highlight": {
+        "nodes": ["start", "decision", "path_a", "end"],
+        "edges": [
+          { "source": "start", "target": "decision" },
+          { "source": "decision", "target": "path_a" },
+          { "source": "path_a", "target": "end" }
+        ]
+      }
+    },
+    {
+      "name": "Invalid Data Path",
+      "highlight": {
+        "nodes": ["start", "decision", "path_b", "end"],
+        "edges": [
+          { "source": "start", "target": "decision" },
+          { "source": "decision", "target": "path_b" },
+          { "source": "path_b", "target": "end" }
+        ]
+      }
+    }
+  ]
+}

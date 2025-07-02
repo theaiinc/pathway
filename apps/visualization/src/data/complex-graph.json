@@ -1,0 +1,71 @@
+{
+  "workflow": {
+    "nodes": [
+      { "id": "start", "type": "Intent", "label": "Initiate Complex Project" },
+      { "id": "auth", "type": "Action", "label": "Authenticate User" },
+      { "id": "fetch_data", "type": "Action", "label": "Fetch User Data" },
+      {
+        "id": "process_a",
+        "type": "Sub-Process",
+        "label": "Run Sub-Process A"
+      },
+      {
+        "id": "process_b",
+        "type": "Sub-Process",
+        "label": "Run Sub-Process B"
+      },
+      { "id": "analyze", "type": "Action", "label": "Analyze Results" },
+      { "id": "report", "type": "Result", "label": "Generate Report" },
+      { "id": "cleanup", "type": "Action", "label": "Cleanup Resources" }
+    ],
+    "edges": [
+      { "source": "start", "target": "auth" },
+      { "source": "auth", "target": "fetch_data" },
+      { "source": "fetch_data", "target": "process_a" },
+      { "source": "fetch_data", "target": "process_b" },
+      { "source": "process_a", "target": "analyze" },
+      { "source": "process_b", "target": "analyze" },
+      { "source": "analyze", "target": "report" },
+      { "source": "report", "target": "cleanup" }
+    ]
+  },
+  "prompts": [
+    {
+      "name": "Data Processing Flow",
+      "highlight": {
+        "nodes": ["fetch_data", "process_a", "process_b", "analyze"],
+        "edges": [
+          { "source": "fetch_data", "target": "process_a" },
+          { "source": "fetch_data", "target": "process_b" },
+          { "source": "process_a", "target": "analyze" },
+          { "source": "process_b", "target": "analyze" }
+        ]
+      }
+    },
+    {
+      "name": "Full Project Lifecycle",
+      "highlight": {
+        "nodes": [
+          "start",
+          "auth",
+          "fetch_data",
+          "process_a",
+          "process_b",
+          "analyze",
+          "report",
+          "cleanup"
+        ],
+        "edges": [
+          { "source": "start", "target": "auth" },
+          { "source": "auth", "target": "fetch_data" },
+          { "source": "fetch_data", "target": "process_a" },
+          { "source": "fetch_data", "target": "process_b" },
+          { "source": "process_a", "target": "analyze" },
+          { "source": "process_b", "target": "analyze" },
+          { "source": "analyze", "target": "report" },
+          { "source": "report", "target": "cleanup" }
+        ]
+      }
+    }
+  ]
+}

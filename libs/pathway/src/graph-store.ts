@@ -1,15 +1,12 @@
-import pkg, { type MultiGraph } from 'graphology';
-const { MultiGraph: MultiGraphImpl } = pkg;
+import { MultiGraph } from 'graphology';
 import { bfsFromNode } from 'graphology-traversal';
 import { v4 as uuidv4 } from 'uuid';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { subgraph } from 'graphology-operators';
-import { fileURLToPath } from 'url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const GRAPH_FILE_PATH = path.join(__dirname, '../../data/workflow-graph.json');
+const GRAPH_DATA_DIR = path.join(process.cwd(), 'libs/pathway/data');
+const GRAPH_FILE_PATH = path.join(GRAPH_DATA_DIR, 'workflow-graph.json');
 
 // --- Graph Schema Definitions ---
 
@@ -42,7 +39,7 @@ export class GraphStore {
   private graph: MultiGraph;
 
   constructor() {
-    this.graph = new MultiGraphImpl();
+    this.graph = new MultiGraph();
     this.loadGraph().catch(err => {
       // If the file doesn't exist, it's okay. We'll start with a new graph.
       if (err instanceof Error && 'code' in err && err.code !== 'ENOENT') {
@@ -55,6 +52,8 @@ export class GraphStore {
     try {
       const serializedGraph = this.graph.export();
       const data = JSON.stringify(serializedGraph, null, 2);
+      // Ensure the directory exists before writing
+      await fs.mkdir(GRAPH_DATA_DIR, { recursive: true });
       await fs.writeFile(GRAPH_FILE_PATH, data, 'utf-8');
       console.log(`[GraphStore] Graph saved to ${GRAPH_FILE_PATH}`);
     } catch (error) {
@@ -124,6 +123,12 @@ export class GraphStore {
 
   getGraph(): MultiGraph {
     return this.graph;
+  }
+
+  async clearGraph(): Promise<void> {
+    this.graph.clear();
+    await this.saveGraph();
+    console.log('[GraphStore] Graph has been cleared.');
   }
 
   findIntentNodeByVectorId(vectorId: string): string | null {

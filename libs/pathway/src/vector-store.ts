@@ -4,7 +4,7 @@ import {
   // DefaultEmbeddingFunction,
 } from 'chromadb';
 import { v4 as uuidv4 } from 'uuid';
-import dotenv from 'dotenv';
+import * as dotenv from 'dotenv';
 import { AzureOpenAI } from 'openai';
 
 dotenv.config();
@@ -59,8 +59,11 @@ export class VectorStore {
       this.collection = await this.client.getOrCreateCollection({
         name: this.collectionName,
         embeddingFunction: embedder,
+        metadata: { 'hnsw:space': 'cosine' },
       });
-      console.log(`ChromaDB collection '${this.collectionName}' is ready.`);
+      console.log(
+        `ChromaDB collection '${this.collectionName}' is ready with cosine distance.`
+      );
     } catch (error) {
       console.error('Error initializing ChromaDB collection:', error);
       throw error;
@@ -133,8 +136,11 @@ Example for a query "read a file in nodejs":
       this.collection = await this.client.getOrCreateCollection({
         name: 'intentions',
         embeddingFunction: embedder,
+        metadata: { 'hnsw:space': 'cosine' },
       });
-      console.log("ChromaDB collection 'intentions' cleared and recreated.");
+      console.log(
+        "ChromaDB collection 'intentions' cleared and recreated with cosine distance."
+      );
     } catch (error) {
       console.error('Error clearing ChromaDB collection:', error);
     }

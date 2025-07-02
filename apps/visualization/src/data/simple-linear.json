@@ -1,0 +1,28 @@
+{
+  "workflow": {
+    "nodes": [
+      { "id": "start", "type": "Intent", "label": "Start Process" },
+      { "id": "step1", "type": "Action", "label": "Execute Step 1" },
+      { "id": "step2", "type": "Action", "label": "Execute Step 2" },
+      { "id": "end", "type": "Result", "label": "Process Complete" }
+    ],
+    "edges": [
+      { "source": "start", "target": "step1" },
+      { "source": "step1", "target": "step2" },
+      { "source": "step2", "target": "end" }
+    ]
+  },
+  "prompts": [
+    {
+      "name": "Full Process",
+      "highlight": {
+        "nodes": ["start", "step1", "step2", "end"],
+        "edges": [
+          { "source": "start", "target": "step1" },
+          { "source": "step1", "target": "step2" },
+          { "source": "step2", "target": "end" }
+        ]
+      }
+    }
+  ]
+}

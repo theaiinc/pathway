@@ -13,15 +13,24 @@
   "license": "ISC",
   "dependencies": {
     "chromadb": "^1.8.1",
+    "dotenv": "^16.4.5",
     "graphology": "^0.25.4",
     "graphology-operators": "^1.6.1",
     "graphology-traversal": "^0.3.1",
     "openai": "^4.15.3",
-    "uuid": "^9.0.1"
+    "tsconfig-paths": "^4.2.0",
+    "uuid": "^10.0.0"
   },
   "devDependencies": {
-    "@types/node": "^20.11.25",
+    "@nx/vite": "^21.2.1",
+    "@types/node": "^20.14.2",
     "@types/uuid": "^9.0.8",
-    "typescript": "^5.3.3"
-  }
+    "nx": "^19.3.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  },
+  "workspaces": [
+    "apps/*",
+    "libs/*"
+  ]
 }

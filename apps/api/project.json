@@ -1,0 +1,26 @@
+{
+  "name": "api",
+  "$schema": "./node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "pathway/apps/api/src",
+  "projectType": "application",
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/apps/api",
+        "main": "apps/api/src/server.ts",
+        "tsConfig": "apps/api/tsconfig.json",
+        "assets": ["apps/api/*.md"]
+      }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TS_NODE_PROJECT=./apps/api/tsconfig.json node -r tsconfig-paths/register ./dist/apps/api/src/server.js"
+      },
+      "dependsOn": ["build"]
+    }
+  },
+  "tags": []
+}

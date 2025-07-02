@@ -1,0 +1,627 @@
+{
+  "options": {
+    "type": "mixed",
+    "multi": true,
+    "allowSelfLoops": true
+  },
+  "attributes": {},
+  "nodes": [
+    {
+      "key": "f1ca0669-2898-4e4d-9559-3696c3384d12__intent_node",
+      "attributes": {
+        "id": "f1ca0669-2898-4e4d-9559-3696c3384d12__intent_node",
+        "type": "Intent",
+        "label": "How to write a file in python?",
+        "vectorId": "43183df9-e6ad-4613-abf8-181f7b2d0e0a"
+      }
+    },
+    {
+      "key": "f1ca0669-2898-4e4d-9559-3696c3384d12__step_1",
+      "attributes": {
+        "id": "f1ca0669-2898-4e4d-9559-3696c3384d12__step_1",
+        "type": "Step",
+        "label": "Open a file in write mode",
+        "action": "code_snippet",
+        "parameters": {
+          "code": "file = open('filename.txt', 'w')"
+        }
+      }
+    },
+    {
+      "key": "f1ca0669-2898-4e4d-9559-3696c3384d12__step_2",
+      "attributes": {
+        "id": "f1ca0669-2898-4e4d-9559-3696c3384d12__step_2",
+        "type": "Step",
+        "label": "Write content to the file",
+        "action": "code_snippet",
+        "parameters": {
+          "code": "file.write('Hello, World!')"
+        }
+      }
+    },
+    {
+      "key": "f1ca0669-2898-4e4d-9559-3696c3384d12__step_3",
+      "attributes": {
+        "id": "f1ca0669-2898-4e4d-9559-3696c3384d12__step_3",
+        "type": "Step",
+        "label": "Close the file",
+        "action": "code_snippet",
+        "parameters": {
+          "code": "file.close()"
+        }
+      }
+    },
+    {
+      "key": "4d0788d2-54c3-4b96-894e-6d86f39fd1a3__intent_node",
+      "attributes": {
+        "id": "4d0788d2-54c3-4b96-894e-6d86f39fd1a3__intent_node",
+        "type": "Intent",
+        "label": "How to read a file in python?",
+        "vectorId": "20690917-5c29-4602-ba16-3284f046d4fc"
+      }
+    },
+    {
+      "key": "4d0788d2-54c3-4b96-894e-6d86f39fd1a3__step_1",
+      "attributes": {
+        "id": "4d0788d2-54c3-4b96-894e-6d86f39fd1a3__step_1",
+        "type": "Step",
+        "label": "Open the file in read mode",
+        "action": "execute_code",
+        "parameters": {
+          "code": "file = open('filename.txt', 'r')"
+        }
+      }
+    },
+    {
+      "key": "4d0788d2-54c3-4b96-894e-6d86f39fd1a3__step_2",
+      "attributes": {
+        "id": "4d0788d2-54c3-4b96-894e-6d86f39fd1a3__step_2",
+        "type": "Step",
+        "label": "Read the content of the file",
+        "action": "execute_code",
+        "parameters": {
+          "code": "content = file.read()"
+        }
+      }
+    },
+    {
+      "key": "4d0788d2-54c3-4b96-894e-6d86f39fd1a3__step_3",
+      "attributes": {
+        "id": "4d0788d2-54c3-4b96-894e-6d86f39fd1a3__step_3",
+        "type": "Step",
+        "label": "Print the content",
+        "action": "execute_code",
+        "parameters": {
+          "code": "print(content)"
+        }
+      }
+    },
+    {
+      "key": "4d0788d2-54c3-4b96-894e-6d86f39fd1a3__step_4",
+      "attributes": {
+        "id": "4d0788d2-54c3-4b96-894e-6d86f39fd1a3__step_4",
+        "type": "Step",
+        "label": "Close the file",
+        "action": "execute_code",
+        "parameters": {
+          "code": "file.close()"
+        }
+      }
+    },
+    {
+      "key": "25a43280-c08a-4090-9c7a-c7f228a736d5__intent_node",
+      "attributes": {
+        "id": "25a43280-c08a-4090-9c7a-c7f228a736d5__intent_node",
+        "type": "Intent",
+        "label": "overview",
+        "vectorId": "8680aa21-103b-4fdd-aa00-3cc985544d9a"
+      }
+    },
+    {
+      "key": "25a43280-c08a-4090-9c7a-c7f228a736d5__step_1",
+      "attributes": {
+        "id": "25a43280-c08a-4090-9c7a-c7f228a736d5__step_1",
+        "type": "Step",
+        "label": "Define the Scope",
+        "action": "define_scope",
+        "parameters": {
+          "scope_description": "Determine what the overview will cover."
+        }
+      }
+    },
+    {
+      "key": "25a43280-c08a-4090-9c7a-c7f228a736d5__step_2",
+      "attributes": {
+        "id": "25a43280-c08a-4090-9c7a-c7f228a736d5__step_2",
+        "type": "Step",
+        "label": "Gather Information",
+        "action": "collect_information",
+        "parameters": {
+          "sources": [
+            "articles",
+            "reports",
+            "surveys"
+          ],
+          "topics": [
+            "key highlights",
+            "statistics",
+            "trends"
+          ]
+        }
+      }
+    },
+    {
+      "key": "25a43280-c08a-4090-9c7a-c7f228a736d5__step_3",
+      "attributes": {
+        "id": "25a43280-c08a-4090-9c7a-c7f228a736d5__step_3",
+        "type": "Step",
+        "label": "Organize Information",
+        "action": "organize_data",
+        "parameters": {
+          "format": "outline or bullet points"
+        }
+      }
+    },
+    {
+      "key": "25a43280-c08a-4090-9c7a-c7f228a736d5__step_4",
+      "attributes": {
+        "id": "25a43280-c08a-4090-9c7a-c7f228a736d5__step_4",
+        "type": "Step",
+        "label": "Draft the Overview",
+        "action": "write_overview",
+        "parameters": {
+          "tone": "concise and informative"
+        }
+      }
+    },
+    {
+      "key": "25a43280-c08a-4090-9c7a-c7f228a736d5__step_5",
+      "attributes": {
+        "id": "25a43280-c08a-4090-9c7a-c7f228a736d5__step_5",
+        "type": "Step",
+        "label": "Review and Revise",
+        "action": "review_document",
+        "parameters": {
+          "criteria": [
+            "clarity",
+            "accuracy",
+            "completeness"
+          ]
+        }
+      }
+    },
+    {
+      "key": "25a43280-c08a-4090-9c7a-c7f228a736d5__step_6",
+      "attributes": {
+        "id": "25a43280-c08a-4090-9c7a-c7f228a736d5__step_6",
+        "type": "Step",
+        "label": "Finalize the Overview",
+        "action": "finalize_document",
+        "parameters": {
+          "format": "PDF or presentation"
+        }
+      }
+    },
+    {
+      "key": "9056702e-29fc-4771-822b-48c4619b5a06__intent_node",
+      "attributes": {
+        "id": "9056702e-29fc-4771-822b-48c4619b5a06__intent_node",
+        "type": "Intent",
+        "label": "Create a simple web server",
+        "vectorId": "1101409b-6b53-4562-b55f-d1845c66cf27"
+      }
+    },
+    {
+      "key": "9056702e-29fc-4771-822b-48c4619b5a06__step_1",
+      "attributes": {
+        "id": "9056702e-29fc-4771-822b-48c4619b5a06__step_1",
+        "type": "Step",
+        "label": "Initialize a new Node.js project",
+        "action": "execute_shell_command",
+        "parameters": {
+          "command": "npm init -y"
+        }
+      }
+    },
+    {
+      "key": "9056702e-29fc-4771-822b-48c4619b5a06__step_2",
+      "attributes": {
+        "id": "9056702e-29fc-4771-822b-48c4619b5a06__step_2",
+        "type": "Step",
+        "label": "Install the http module",
+        "action": "execute_shell_command",
+        "parameters": {
+          "command": "npm install http"
+        }
+      }
+    },
+    {
+      "key": "9056702e-29fc-4771-822b-48c4619b5a06__step_3",
+      "attributes": {
+        "id": "9056702e-29fc-4771-822b-48c4619b5a06__step_3",
+        "type": "Step",
+        "label": "Create a server.js file",
+        "action": "execute_shell_command",
+        "parameters": {
+          "command": "echo \"const http = require('http');\\nconst hostname = '127.0.0.1';\\nconst port = 3000;\\n\\nconst server = http.createServer((req, res) => {\\n  res.statusCode = 200;\\n  res.setHeader('Content-Type', 'text/plain');\\n  res.end('Hello World!\\n');\\n});\\n\\nserver.listen(port, hostname, () => {\\n  console.log(`Server running at http://${hostname}:${port}/`);\\n});\" > server.js"
+        }
+      }
+    },
+    {
+      "key": "9056702e-29fc-4771-822b-48c4619b5a06__step_4",
+      "attributes": {
+        "id": "9056702e-29fc-4771-822b-48c4619b5a06__step_4",
+        "type": "Step",
+        "label": "Run the web server",
+        "action": "execute_shell_command",
+        "parameters": {
+          "command": "node server.js"
+        }
+      }
+    },
+    {
+      "key": "4f07ea98-b237-4109-ac44-5370efafda7f__intent_node",
+      "attributes": {
+        "id": "4f07ea98-b237-4109-ac44-5370efafda7f__intent_node",
+        "type": "Intent",
+        "label": "What is a closure in javascript?",
+        "vectorId": "643117c1-324e-4919-99c1-f0251da2d5a3"
+      }
+    },
+    {
+      "key": "4f07ea98-b237-4109-ac44-5370efafda7f__step_1",
+      "attributes": {
+        "id": "4f07ea98-b237-4109-ac44-5370efafda7f__step_1",
+        "type": "Step",
+        "label": "Define Closure",
+        "action": "explain_concept",
+        "parameters": {
+          "definition": "A closure is a function that has access to its outer function scope even after the outer function has closed."
+        }
+      }
+    },
+    {
+      "key": "4f07ea98-b237-4109-ac44-5370efafda7f__step_2",
+      "attributes": {
+        "id": "4f07ea98-b237-4109-ac44-5370efafda7f__step_2",
+        "type": "Step",
+        "label": "Identify Parts of Closure",
+        "action": "list_parts",
+        "parameters": {
+          "parts": [
+            "Inner function",
+            "Outer function",
+            "Lexical scope"
+          ]
+        }
+      }
+    },
+    {
+      "key": "4f07ea98-b237-4109-ac44-5370efafda7f__step_3",
+      "attributes": {
+        "id": "4f07ea98-b237-4109-ac44-5370efafda7f__step_3",
+        "type": "Step",
+        "label": "Provide Example of Closure",
+        "action": "give_example",
+        "parameters": {
+          "example_code": "function outerFunction() { let outerVariable = 'I am outside!'; function innerFunction() { console.log(outerVariable); } return innerFunction; } const closure = outerFunction(); closure(); // Outputs: I am outside!"
+        }
+      }
+    },
+    {
+      "key": "4f07ea98-b237-4109-ac44-5370efafda7f__step_4",
+      "attributes": {
+        "id": "4f07ea98-b237-4109-ac44-5370efafda7f__step_4",
+        "type": "Step",
+        "label": "Explain Use Cases of Closure",
+        "action": "explain_use_cases",
+        "parameters": {
+          "use_cases": [
+            "Data privacy and encapsulation",
+            "Partial application of functions",
+            "Function factories"
+          ]
+        }
+      }
+    },
+    {
+      "key": "4f07ea98-b237-4109-ac44-5370efafda7f__step_5",
+      "attributes": {
+        "id": "4f07ea98-b237-4109-ac44-5370efafda7f__step_5",
+        "type": "Step",
+        "label": "Recap Closure Definition",
+        "action": "recap",
+        "parameters": {
+          "recap": "A closure allows access to an outer function's scope from an inner function, even after the outer function has executed."
+        }
+      }
+    },
+    {
+      "key": "06ff6736-dcb9-4e62-a0f3-dcf5d542143f__intent_node",
+      "attributes": {
+        "id": "06ff6736-dcb9-4e62-a0f3-dcf5d542143f__intent_node",
+        "type": "Intent",
+        "label": "overview",
+        "vectorId": "afa73c83-97e4-481d-91ac-d63b71a962c3"
+      }
+    },
+    {
+      "key": "06ff6736-dcb9-4e62-a0f3-dcf5d542143f__step_1",
+      "attributes": {
+        "id": "06ff6736-dcb9-4e62-a0f3-dcf5d542143f__step_1",
+        "type": "Step",
+        "label": "Define the topic for the overview",
+        "action": "capture_input",
+        "parameters": {
+          "prompt": "What topic do you need an overview of?"
+        }
+      }
+    },
+    {
+      "key": "06ff6736-dcb9-4e62-a0f3-dcf5d542143f__step_2",
+      "attributes": {
+        "id": "06ff6736-dcb9-4e62-a0f3-dcf5d542143f__step_2",
+        "type": "Step",
+        "label": "Research the topic",
+        "action": "search_information",
+        "parameters": {
+          "topic": "{{step_1.output}}"
+        }
+      }
+    },
+    {
+      "key": "06ff6736-dcb9-4e62-a0f3-dcf5d542143f__step_3",
+      "attributes": {
+        "id": "06ff6736-dcb9-4e62-a0f3-dcf5d542143f__step_3",
+        "type": "Step",
+        "label": "Organize the information",
+        "action": "synthesize_data",
+        "parameters": {
+          "data_source": "{{step_2.output}}"
+        }
+      }
+    },
+    {
+      "key": "06ff6736-dcb9-4e62-a0f3-dcf5d542143f__step_4",
+      "attributes": {
+        "id": "06ff6736-dcb9-4e62-a0f3-dcf5d542143f__step_4",
+        "type": "Step",
+        "label": "Create a summary",
+        "action": "generate_summary",
+        "parameters": {
+          "organized_data": "{{step_3.output}}"
+        }
+      }
+    },
+    {
+      "key": "06ff6736-dcb9-4e62-a0f3-dcf5d542143f__step_5",
+      "attributes": {
+        "id": "06ff6736-dcb9-4e62-a0f3-dcf5d542143f__step_5",
+        "type": "Step",
+        "label": "Present the overview",
+        "action": "display_output",
+        "parameters": {
+          "summary": "{{step_4.output}}"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "key": "geid_3_0",
+      "source": "f1ca0669-2898-4e4d-9559-3696c3384d12__intent_node",
+      "target": "f1ca0669-2898-4e4d-9559-3696c3384d12__step_1",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_3_1",
+      "source": "f1ca0669-2898-4e4d-9559-3696c3384d12__step_1",
+      "target": "f1ca0669-2898-4e4d-9559-3696c3384d12__step_2",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_3_2",
+      "source": "f1ca0669-2898-4e4d-9559-3696c3384d12__step_2",
+      "target": "f1ca0669-2898-4e4d-9559-3696c3384d12__step_3",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_7_0",
+      "source": "4d0788d2-54c3-4b96-894e-6d86f39fd1a3__intent_node",
+      "target": "4d0788d2-54c3-4b96-894e-6d86f39fd1a3__step_1",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_7_1",
+      "source": "4d0788d2-54c3-4b96-894e-6d86f39fd1a3__step_1",
+      "target": "4d0788d2-54c3-4b96-894e-6d86f39fd1a3__step_2",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_7_2",
+      "source": "4d0788d2-54c3-4b96-894e-6d86f39fd1a3__step_2",
+      "target": "4d0788d2-54c3-4b96-894e-6d86f39fd1a3__step_3",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_7_3",
+      "source": "4d0788d2-54c3-4b96-894e-6d86f39fd1a3__step_3",
+      "target": "4d0788d2-54c3-4b96-894e-6d86f39fd1a3__step_4",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_11_0",
+      "source": "25a43280-c08a-4090-9c7a-c7f228a736d5__intent_node",
+      "target": "25a43280-c08a-4090-9c7a-c7f228a736d5__step_1",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_11_1",
+      "source": "25a43280-c08a-4090-9c7a-c7f228a736d5__step_1",
+      "target": "25a43280-c08a-4090-9c7a-c7f228a736d5__step_2",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_11_2",
+      "source": "25a43280-c08a-4090-9c7a-c7f228a736d5__step_2",
+      "target": "25a43280-c08a-4090-9c7a-c7f228a736d5__step_3",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_11_3",
+      "source": "25a43280-c08a-4090-9c7a-c7f228a736d5__step_3",
+      "target": "25a43280-c08a-4090-9c7a-c7f228a736d5__step_4",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_11_4",
+      "source": "25a43280-c08a-4090-9c7a-c7f228a736d5__step_4",
+      "target": "25a43280-c08a-4090-9c7a-c7f228a736d5__step_5",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_11_5",
+      "source": "25a43280-c08a-4090-9c7a-c7f228a736d5__step_5",
+      "target": "25a43280-c08a-4090-9c7a-c7f228a736d5__step_6",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_22_0",
+      "source": "9056702e-29fc-4771-822b-48c4619b5a06__intent_node",
+      "target": "9056702e-29fc-4771-822b-48c4619b5a06__step_1",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_22_1",
+      "source": "9056702e-29fc-4771-822b-48c4619b5a06__step_1",
+      "target": "9056702e-29fc-4771-822b-48c4619b5a06__step_2",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_22_2",
+      "source": "9056702e-29fc-4771-822b-48c4619b5a06__step_2",
+      "target": "9056702e-29fc-4771-822b-48c4619b5a06__step_3",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_22_3",
+      "source": "9056702e-29fc-4771-822b-48c4619b5a06__step_3",
+      "target": "9056702e-29fc-4771-822b-48c4619b5a06__step_4",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_27_0",
+      "source": "4f07ea98-b237-4109-ac44-5370efafda7f__intent_node",
+      "target": "4f07ea98-b237-4109-ac44-5370efafda7f__step_1",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_27_1",
+      "source": "4f07ea98-b237-4109-ac44-5370efafda7f__step_1",
+      "target": "4f07ea98-b237-4109-ac44-5370efafda7f__step_2",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_27_2",
+      "source": "4f07ea98-b237-4109-ac44-5370efafda7f__step_2",
+      "target": "4f07ea98-b237-4109-ac44-5370efafda7f__step_3",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_27_3",
+      "source": "4f07ea98-b237-4109-ac44-5370efafda7f__step_3",
+      "target": "4f07ea98-b237-4109-ac44-5370efafda7f__step_4",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_27_4",
+      "source": "4f07ea98-b237-4109-ac44-5370efafda7f__step_4",
+      "target": "4f07ea98-b237-4109-ac44-5370efafda7f__step_5",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_32_0",
+      "source": "06ff6736-dcb9-4e62-a0f3-dcf5d542143f__intent_node",
+      "target": "06ff6736-dcb9-4e62-a0f3-dcf5d542143f__step_1",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_32_1",
+      "source": "06ff6736-dcb9-4e62-a0f3-dcf5d542143f__step_1",
+      "target": "06ff6736-dcb9-4e62-a0f3-dcf5d542143f__step_2",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_32_2",
+      "source": "06ff6736-dcb9-4e62-a0f3-dcf5d542143f__step_2",
+      "target": "06ff6736-dcb9-4e62-a0f3-dcf5d542143f__step_3",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_32_3",
+      "source": "06ff6736-dcb9-4e62-a0f3-dcf5d542143f__step_3",
+      "target": "06ff6736-dcb9-4e62-a0f3-dcf5d542143f__step_4",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_32_4",
+      "source": "06ff6736-dcb9-4e62-a0f3-dcf5d542143f__step_4",
+      "target": "06ff6736-dcb9-4e62-a0f3-dcf5d542143f__step_5",
+      "attributes": {
+        "type": "Flow"
+      }
+    }
+  ]
+}

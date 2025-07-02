@@ -1,0 +1,19 @@
+{
+  "name": "pathway-lib",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/pathway/src",
+  "projectType": "library",
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/pathway",
+        "main": "libs/pathway/src/index.ts",
+        "tsConfig": "libs/pathway/tsconfig.lib.json",
+        "assets": ["libs/pathway/*.md"]
+      }
+    }
+  },
+  "tags": []
+}

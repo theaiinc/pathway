@@ -1,9 +1,8 @@
 import { VectorStore } from './vector-store.js';
 import { GraphStore } from './graph-store.js';
 import { v4 as uuidv4 } from 'uuid';
-import pkg, { type MultiGraph } from 'graphology';
+import { MultiGraph } from 'graphology';
 import { WorkflowExecutor } from './workflow-executor.js';
-const { MultiGraph: MultiGraphImpl } = pkg;
 
 const azureOpenAIApiKey = process.env.AZURE_OPENAI_API_KEY;
 const azureOpenAIApiEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
@@ -48,7 +47,7 @@ export class PathwayManager {
 
     if (!similarIntentions || similarIntentions.ids.length === 0) {
       console.log('[Manager] No similar intentions found in VectorStore.');
-      return this.generateNewWorkflow(query);
+      return null;
     }
 
     // Score and rank the candidates
@@ -63,8 +62,13 @@ export class PathwayManager {
       const distance = similarIntentions.distances[i];
       const similarity = 1 - distance;
 
+      console.log(
+        `[Manager] Checking candidate ${i + 1} with vectorId: ${vectorId}`
+      );
       const intentNode = this.graphStore.findIntentNodeByVectorId(vectorId);
+
       if (intentNode) {
+        console.log(`[Manager]   ... found intent node: ${intentNode}`);
         const workflow = this.graphStore.getWorkflowByIntentNode(intentNode);
         const score = this.scoreWorkflow(workflow, similarity);
         console.log(
@@ -79,6 +83,10 @@ export class PathwayManager {
           bestScore = score;
           bestWorkflow = workflow;
         }
+      } else {
+        console.log(
+          `[Manager]   ... could not find an intent node for this vectorId.`
+        );
       }
     }
 
@@ -93,11 +101,10 @@ export class PathwayManager {
         console.log(
           `[Manager] Best candidate score (${bestScore.toFixed(
             4
-          )}) is below threshold of ${similarityThreshold}.`
+          )}) is below threshold of ${similarityThreshold}. No suitable workflow found.`
         );
       }
-      console.log(`[Manager] Generating new workflow.`);
-      return this.generateNewWorkflow(query);
+      return null;
     }
   }
 
@@ -113,7 +120,7 @@ export class PathwayManager {
     query: string
   ): Promise<MultiGraph> {
     console.log(`\n[Manager] Adapting workflow...`);
-    const newWorkflow = new MultiGraphImpl();
+    const newWorkflow = new MultiGraph();
     newWorkflow.import(workflow.export());
     // Placeholder for actual LLM-based adaptation logic
     console.log('[Manager] Placeholder adaptation complete (workflow cloned).');
@@ -129,17 +136,50 @@ export class PathwayManager {
     );
     const vectorId = await this.vectorStore.addIntention(originalQuery);
 
-    const intentNode = workflow.findNode(
-      node => workflow.getNodeAttribute(node, 'type') === 'Intent'
+    // --- Start of fix: Make node IDs unique before merging ---
+    const workflowId = uuidv4();
+    const remappedGraph = new MultiGraph();
+    const idMap: { [oldId: string]: string } = {};
+
+    // Remap nodes
+    workflow.forEachNode((node, attributes) => {
+      const newId = `${workflowId}__${node}`;
+      idMap[node] = newId;
+      remappedGraph.addNode(newId, { ...attributes, id: newId });
+    });
+
+    // Remap edges
+    workflow.forEachEdge(
+      (
+        edge,
+        attributes,
+        source,
+        target,
+        sourceAttributes,
+        targetAttributes,
+        undirected
+      ) => {
+        const newSource = idMap[source];
+        const newTarget = idMap[target];
+        if (newSource && newTarget) {
+          remappedGraph.addDirectedEdge(newSource, newTarget, attributes);
+        }
+      }
     );
-    if (!intentNode) {
+    // --- End of fix ---
+
+    const intentNodeId = Object.values(idMap).find(newId =>
+      newId.includes('intent_node')
+    );
+
+    if (!intentNodeId) {
       console.error('[Manager] Cannot retain workflow: Intent node not found.');
       return;
     }
 
     // Update the intent node with the new vectorId and the original query
-    workflow.setNodeAttribute(intentNode, 'vectorId', vectorId);
-    workflow.setNodeAttribute(intentNode, 'label', originalQuery);
+    remappedGraph.setNodeAttribute(intentNodeId, 'vectorId', vectorId);
+    remappedGraph.setNodeAttribute(intentNodeId, 'label', originalQuery);
 
     // This is a simplified "retain" step. We're assuming the new workflow
     // is being added to the graph store. In a real system, you might merge it.
@@ -150,7 +190,7 @@ export class PathwayManager {
     // would be responsible for serializing this. Let's ensure the graph store handles it.
     // For this implementation, we will merge the new workflow into the main graph.
 
-    this.graphStore.getGraph().import(workflow.export());
+    this.graphStore.getGraph().import(remappedGraph.export(), true);
     await this.graphStore.saveGraph();
 
     console.log(`[Manager] Workflow retained with new vectorId: ${vectorId}`);
@@ -179,7 +219,7 @@ export class PathwayManager {
 
     try {
       const workflowData = JSON.parse(llmResponse).workflow;
-      const newGraph = new MultiGraphImpl();
+      const newGraph = new MultiGraph();
 
       // Add nodes
       workflowData.nodes.forEach((node: any) => {
