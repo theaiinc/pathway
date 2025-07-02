@@ -54,7 +54,10 @@ async function main() {
     );
 
     console.log("\n--- Step 3: Use Manager to 'Adapt' the workflow ---");
-    const adaptedWorkflow = pathwayManager.adaptWorkflow(retrievedWorkflow, {});
+    const adaptedWorkflow = await pathwayManager.adaptWorkflow(
+      retrievedWorkflow,
+      newQuery
+    );
     console.log(
       `[Manager] Adaptation complete. New workflow has ${adaptedWorkflow.order} nodes.`
     );

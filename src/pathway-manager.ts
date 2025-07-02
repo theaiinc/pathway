@@ -1,6 +1,12 @@
 import { VectorStore } from './vector-store.js';
 import { GraphStore, IntentNode, StepNode } from './graph-store.js';
 
+const azureOpenAIApiKey = process.env.AZURE_OPENAI_API_KEY;
+const azureOpenAIApiEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
+const azureOpenAIApiVersion = process.env.AZURE_OPENAI_API_VERSION;
+const azureOpenAIChatDeploymentName =
+  process.env.AZURE_OPENAI_CHAT_DEPLOYMENT_NAME;
+
 export class PathwayManager {
   private vectorStore: VectorStore;
   private graphStore: GraphStore;
@@ -60,15 +66,77 @@ export class PathwayManager {
    * Adapts a retrieved workflow to a new context.
    * This is a placeholder for the "Reuse" phase of the CBR cycle.
    * @param workflow The subgraph of the workflow to adapt.
-   * @param newContext An object describing the necessary adaptations.
+   * @param newQuery The new query or problem.
    * @returns A new, adapted workflow subgraph.
    */
-  adaptWorkflow(
+  async adaptWorkflow(
     workflow: import('graphology').MultiGraph,
-    newContext: any
-  ): import('graphology').MultiGraph {
+    newQuery: string
+  ): Promise<import('graphology').MultiGraph> {
     console.log('\n[Manager] Adapting workflow...');
-    // For now, just return a clone of the workflow without changes.
+
+    // 1. Serialize workflow for the LLM
+    const simplifiedWorkflow: {
+      intent: { originalQuery?: string };
+      steps: any[];
+    } = {
+      intent: {},
+      steps: [],
+    };
+    workflow.forEachNode((node, attributes) => {
+      if (attributes.type === 'Intent') {
+        simplifiedWorkflow.intent = { originalQuery: attributes.originalQuery };
+      } else if (attributes.type === 'Step') {
+        simplifiedWorkflow.steps.push({
+          label: attributes.label,
+          action: attributes.action,
+          parameters: attributes.parameters,
+        });
+      }
+    });
+
+    // 2. Construct the prompt
+    const prompt = `Given an existing workflow for the query "${
+      simplifiedWorkflow.intent.originalQuery
+    }", what changes are needed to adapt it for the new query "${newQuery}"?
+    
+    Existing workflow steps:
+    ${JSON.stringify(simplifiedWorkflow.steps, null, 2)}
+
+    Respond with a JSON object containing the suggested adaptations for the parameters. For example: { "steps_to_change": [ { "label": "step_label", "new_parameters": { ... } } ] }`;
+
+    console.log('[Manager] Prompting LLM for adaptation suggestions...');
+
+    // 3. Call the LLM (Manual Fetch)
+    // Bypassing the OpenAI SDK due to a persistent and inexplicable 404 error.
+    const url = `${azureOpenAIApiEndpoint}openai/deployments/${azureOpenAIChatDeploymentName}/chat/completions?api-version=${azureOpenAIApiVersion}`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'api-key': azureOpenAIApiKey!,
+      },
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error(
+        `Chat fetch failed with status ${response.status}:`,
+        errorBody
+      );
+      throw new Error(`Chat fetch failed: ${response.statusText}`);
+    }
+
+    const responseData = await response.json();
+    const suggestion = responseData.choices[0].message?.content;
+    console.log('[Manager] LLM suggestion received:', suggestion);
+
+    // 4. (Placeholder) Apply adaptations
     const newWorkflow = workflow.copy();
     console.log('[Manager] Placeholder adaptation complete (workflow cloned).');
     return newWorkflow;

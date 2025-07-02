@@ -2,7 +2,6 @@ import { ChromaClient, IEmbeddingFunction } from 'chromadb';
 import { v4 as uuidv4 } from 'uuid';
 import dotenv from 'dotenv';
 import path from 'path';
-import OpenAI from 'openai';
 import { fileURLToPath } from 'url';
 
 // Define __dirname for ES Modules
@@ -14,40 +13,42 @@ dotenv.config({ path: path.resolve(__dirname, '..', '..', '.env') });
 
 const azureOpenAIApiKey = process.env.AZURE_OPENAI_API_KEY;
 const azureOpenAIApiEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
-const azureOpenAIApiDeploymentName =
-  process.env.AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME;
 const azureOpenAIApiVersion = process.env.AZURE_OPENAI_API_VERSION;
+const azureOpenAIEmbeddingDeploymentName =
+  process.env.AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME;
 
-if (
-  !azureOpenAIApiKey ||
-  !azureOpenAIApiEndpoint ||
-  !azureOpenAIApiDeploymentName ||
-  !azureOpenAIApiVersion
-) {
+if (!azureOpenAIApiKey || !azureOpenAIApiEndpoint || !azureOpenAIApiVersion) {
   throw new Error(
     'Azure OpenAI environment variables are not set. Please check your .env file.'
   );
 }
 
 class AzureOpenAIEmbeddingFunction implements IEmbeddingFunction {
-  private openai: OpenAI;
-
-  constructor() {
-    this.openai = new OpenAI({
-      apiKey: azureOpenAIApiKey,
-      baseURL: `${azureOpenAIApiEndpoint}openai/deployments/${azureOpenAIApiDeploymentName}`,
-      defaultQuery: { 'api-version': azureOpenAIApiVersion },
-      defaultHeaders: { 'api-key': azureOpenAIApiKey },
-    });
-  }
-
   public async generate(texts: string[]): Promise<number[][]> {
-    const response = await this.openai.embeddings.create({
-      model: 'text-embedding-ada-002', // This model name is ignored by the Azure API but is required by the SDK
-      input: texts,
+    // Bypassing the OpenAI SDK due to a persistent and inexplicable 404 error
+    // when using the SDK with Azure. A direct fetch call works reliably.
+    const url = `${azureOpenAIApiEndpoint}openai/deployments/${azureOpenAIEmbeddingDeploymentName}/embeddings?api-version=${azureOpenAIApiVersion}`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'api-key': azureOpenAIApiKey!,
+      },
+      body: JSON.stringify({ input: texts }),
     });
 
-    return response.data.map(d => d.embedding);
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error(
+        `Embeddings fetch failed with status ${response.status}:`,
+        errorBody
+      );
+      throw new Error(`Embeddings fetch failed: ${response.statusText}`);
+    }
+
+    const responseData = await response.json();
+    return responseData.data.map((d: any) => d.embedding);
   }
 }
 
