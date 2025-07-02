@@ -506,6 +506,75 @@
           "example_code": "const http = require('http'); const server = http.createServer((req, res) => { res.end('Hello World!'); }); server.listen(3000);"
         }
       }
+    },
+    {
+      "key": "59698b08-9a3b-409f-9d6d-8204215919f8__intent_node",
+      "attributes": {
+        "id": "59698b08-9a3b-409f-9d6d-8204215919f8__intent_node",
+        "type": "Intent",
+        "label": "what to do after creating a web server?",
+        "vectorId": "082d87e5-cd69-4458-b28d-99ef2625521d"
+      }
+    },
+    {
+      "key": "59698b08-9a3b-409f-9d6d-8204215919f8__step_1",
+      "attributes": {
+        "id": "59698b08-9a3b-409f-9d6d-8204215919f8__step_1",
+        "type": "Step",
+        "label": "Test the web server",
+        "action": "execute_shell_command",
+        "parameters": {
+          "command": "curl http://localhost:PORT"
+        }
+      }
+    },
+    {
+      "key": "59698b08-9a3b-409f-9d6d-8204215919f8__step_2",
+      "attributes": {
+        "id": "59698b08-9a3b-409f-9d6d-8204215919f8__step_2",
+        "type": "Step",
+        "label": "Set up routing",
+        "action": "execute_code",
+        "parameters": {
+          "code": "app.get('/', (req, res) => { res.send('Hello World!'); });"
+        }
+      }
+    },
+    {
+      "key": "59698b08-9a3b-409f-9d6d-8204215919f8__step_3",
+      "attributes": {
+        "id": "59698b08-9a3b-409f-9d6d-8204215919f8__step_3",
+        "type": "Step",
+        "label": "Implement middleware",
+        "action": "execute_code",
+        "parameters": {
+          "code": "app.use(express.json());"
+        }
+      }
+    },
+    {
+      "key": "59698b08-9a3b-409f-9d6d-8204215919f8__step_4",
+      "attributes": {
+        "id": "59698b08-9a3b-409f-9d6d-8204215919f8__step_4",
+        "type": "Step",
+        "label": "Connect to a database",
+        "action": "execute_code",
+        "parameters": {
+          "code": "const mongoose = require('mongoose'); mongoose.connect('mongodb://localhost:27017/mydatabase');"
+        }
+      }
+    },
+    {
+      "key": "59698b08-9a3b-409f-9d6d-8204215919f8__step_5",
+      "attributes": {
+        "id": "59698b08-9a3b-409f-9d6d-8204215919f8__step_5",
+        "type": "Step",
+        "label": "Deploy the web server",
+        "action": "execute_shell_command",
+        "parameters": {
+          "command": "npm start"
+        }
+      }
     }
   ],
   "edges": [
@@ -777,6 +846,62 @@
       "key": "geid_227_1",
       "source": "dbc5a0f0-e43d-40b3-b8c7-938f787aaad3__intent_node",
       "target": "9056702e-29fc-4771-822b-48c4619b5a06__intent_node",
+      "attributes": {
+        "type": "Similarity"
+      }
+    },
+    {
+      "key": "59698b08-9a3b-409f-9d6d-8204215919f8__geid_10_0",
+      "source": "59698b08-9a3b-409f-9d6d-8204215919f8__intent_node",
+      "target": "59698b08-9a3b-409f-9d6d-8204215919f8__step_1",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "59698b08-9a3b-409f-9d6d-8204215919f8__geid_10_1",
+      "source": "59698b08-9a3b-409f-9d6d-8204215919f8__step_1",
+      "target": "59698b08-9a3b-409f-9d6d-8204215919f8__step_2",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "59698b08-9a3b-409f-9d6d-8204215919f8__geid_10_2",
+      "source": "59698b08-9a3b-409f-9d6d-8204215919f8__step_2",
+      "target": "59698b08-9a3b-409f-9d6d-8204215919f8__step_3",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "59698b08-9a3b-409f-9d6d-8204215919f8__geid_10_3",
+      "source": "59698b08-9a3b-409f-9d6d-8204215919f8__step_3",
+      "target": "59698b08-9a3b-409f-9d6d-8204215919f8__step_4",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "59698b08-9a3b-409f-9d6d-8204215919f8__geid_10_4",
+      "source": "59698b08-9a3b-409f-9d6d-8204215919f8__step_4",
+      "target": "59698b08-9a3b-409f-9d6d-8204215919f8__step_5",
+      "attributes": {
+        "type": "Flow"
+      }
+    },
+    {
+      "key": "geid_7_4",
+      "source": "59698b08-9a3b-409f-9d6d-8204215919f8__intent_node",
+      "target": "86f4ea9f-35e2-4c6c-9207-44758fd6b7c4__intent_node",
+      "attributes": {
+        "type": "Similarity"
+      }
+    },
+    {
+      "key": "geid_7_5",
+      "source": "59698b08-9a3b-409f-9d6d-8204215919f8__intent_node",
+      "target": "dbc5a0f0-e43d-40b3-b8c7-938f787aaad3__intent_node",
       "attributes": {
         "type": "Similarity"
       }

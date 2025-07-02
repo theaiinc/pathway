@@ -5,6 +5,8 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import PromptControls from './components/PromptControls';
 import Controls from './components/Controls';
 import SearchControls from './components/SearchControls';
+import Statistics from './components/Statistics';
+import UserPrompts from './components/UserPrompts';
 import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
@@ -96,6 +98,8 @@ const App: React.FC = () => {
   const controlsRef = useRef<HTMLDivElement>(null);
   const promptControlsRef = useRef<HTMLDivElement>(null);
   const searchControlsRef = useRef<HTMLDivElement>(null);
+  const statisticsRef = useRef<HTMLDivElement>(null);
+  const userPromptsRef = useRef<HTMLDivElement>(null);
   const uiBoundsRef = useRef<DOMRect[]>([]);
 
   // Refs for three.js objects
@@ -119,6 +123,7 @@ const App: React.FC = () => {
     null
   );
   const [highlightedNodeIds, setHighlightedNodeIds] = useState<string[]>([]);
+  const [userPrompts, setUserPrompts] = useState<string[]>([]);
 
   // Use a ref to pass the latest hovered ID to the animation loop without re-triggering the effect
   const hoveredWorkflowIdRef = useRef(hoveredWorkflowId);
@@ -160,6 +165,9 @@ const App: React.FC = () => {
   }, []);
 
   const handleGenerate = async (prompt: string) => {
+    if (!userPrompts.includes(prompt)) {
+      setUserPrompts(prev => [...prev, prompt]);
+    }
     setIsGenerating(true);
     setSelectedWorkflowId(null); // Clear previous selection
     const response = await fetch(`${API_URL}/generate`, {
@@ -620,6 +628,10 @@ const App: React.FC = () => {
         bounds.push(promptControlsRef.current.getBoundingClientRect());
       if (searchControlsRef.current)
         bounds.push(searchControlsRef.current.getBoundingClientRect());
+      if (statisticsRef.current)
+        bounds.push(statisticsRef.current.getBoundingClientRect());
+      if (userPromptsRef.current)
+        bounds.push(userPromptsRef.current.getBoundingClientRect());
       uiBoundsRef.current = bounds;
     };
     updateUiBounds();
@@ -944,6 +956,11 @@ const App: React.FC = () => {
     }
   }, [selectedWorkflowId]);
 
+  // --- Calculate Statistics ---
+  const workflowCount = new Set(
+    nodes.map(node => getWorkflowId(node.id)).filter(id => id)
+  ).size;
+
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
       <div ref={mountRef} style={{ width: '100%', height: '100%' }} />
@@ -960,6 +977,12 @@ const App: React.FC = () => {
       >
         {isGenerating ? 'Generating...' : ''}
       </div>
+      <Statistics
+        ref={statisticsRef}
+        nodeCount={nodes.length}
+        edgeCount={links.length}
+        workflowCount={workflowCount}
+      />
       <Controls
         ref={controlsRef}
         testCases={mockTestCases}
@@ -969,6 +992,11 @@ const App: React.FC = () => {
         onShowOverview={handleShowOverview}
       />
       <SearchControls ref={searchControlsRef} onSearch={handleSearch} />
+      <UserPrompts
+        ref={userPromptsRef}
+        prompts={userPrompts}
+        onPromptSelect={handleGenerate}
+      />
       <PromptControls
         ref={promptControlsRef}
         onGenerate={handleGenerate}

@@ -151,7 +151,7 @@ export class PathwayManager {
     // Remap edges
     workflow.forEachEdge(
       (
-        edge,
+        edgeKey,
         attributes,
         source,
         target,
@@ -162,7 +162,13 @@ export class PathwayManager {
         const newSource = idMap[source];
         const newTarget = idMap[target];
         if (newSource && newTarget) {
-          remappedGraph.addDirectedEdge(newSource, newTarget, attributes);
+          const newEdgeKey = `${workflowId}__${edgeKey}`;
+          remappedGraph.addDirectedEdgeWithKey(
+            newEdgeKey,
+            newSource,
+            newTarget,
+            attributes
+          );
         }
       }
     );
