@@ -16,84 +16,82 @@ interface ControlsProps {
   onPromptSelect: (promptName: string) => void;
 }
 
-const Controls: React.FC<ControlsProps> = ({
-  testCases,
-  selectedCase,
-  onCaseChange,
-  onPromptSelect,
-}) => {
-  const selectedTestCase = testCases.find(tc => tc.name === selectedCase);
-  const [hoveredPrompt, setHoveredPrompt] = useState<string | null>(null);
+const Controls = React.forwardRef<HTMLDivElement, ControlsProps>(
+  ({ testCases, selectedCase, onCaseChange, onPromptSelect }, ref) => {
+    const selectedTestCase = testCases.find(tc => tc.name === selectedCase);
+    const [hoveredPrompt, setHoveredPrompt] = useState<string | null>(null);
 
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        top: 10,
-        left: 10,
-        padding: 10,
-        background: 'rgba(0,0,0,0.7)',
-        color: 'white',
-        borderRadius: 5,
-        fontFamily: 'sans-serif',
-        fontSize: '14px',
-      }}
-    >
-      <div>
-        <strong>Test Case:</strong>
-        <select
-          value={selectedCase}
-          onChange={e => onCaseChange(e.target.value)}
-          style={{ marginLeft: 5 }}
-          aria-label="Select Test Case"
-        >
-          {testCases.map(tc => (
-            <option key={tc.name} value={tc.name}>
-              {tc.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      {selectedTestCase && (
-        <div style={{ marginTop: 10 }}>
-          <strong>Prompts:</strong>
-          <ul style={{ listStyle: 'none', padding: 0, margin: '5px 0 0' }}>
-            {selectedTestCase.prompts.map(prompt => (
+    return (
+      <div
+        ref={ref}
+        style={{
+          position: 'absolute',
+          top: 10,
+          left: 10,
+          padding: 10,
+          background: 'rgba(0,0,0,0.7)',
+          color: 'white',
+          borderRadius: 5,
+          fontFamily: 'sans-serif',
+          fontSize: '14px',
+        }}
+      >
+        <div>
+          <strong>Test Case:</strong>
+          <select
+            value={selectedCase}
+            onChange={e => onCaseChange(e.target.value)}
+            style={{ marginLeft: 5 }}
+            aria-label="Select Test Case"
+          >
+            {testCases.map(tc => (
+              <option key={tc.name} value={tc.name}>
+                {tc.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        {selectedTestCase && (
+          <div style={{ marginTop: 10 }}>
+            <strong>Prompts:</strong>
+            <ul style={{ listStyle: 'none', padding: 0, margin: '5px 0 0' }}>
+              {selectedTestCase.prompts.map(prompt => (
+                <li
+                  key={prompt.name}
+                  onClick={() => onPromptSelect(prompt.name)}
+                  onMouseEnter={() => setHoveredPrompt(prompt.name)}
+                  onMouseLeave={() => setHoveredPrompt(null)}
+                  style={{
+                    cursor: 'pointer',
+                    padding: '2px 5px',
+                    borderRadius: 3,
+                    background:
+                      hoveredPrompt === prompt.name ? '#555' : 'transparent',
+                  }}
+                >
+                  {prompt.name}
+                </li>
+              ))}
               <li
-                key={prompt.name}
-                onClick={() => onPromptSelect(prompt.name)}
-                onMouseEnter={() => setHoveredPrompt(prompt.name)}
+                onClick={() => onPromptSelect('overview')}
+                onMouseEnter={() => setHoveredPrompt('overview')}
                 onMouseLeave={() => setHoveredPrompt(null)}
                 style={{
                   cursor: 'pointer',
                   padding: '2px 5px',
                   borderRadius: 3,
                   background:
-                    hoveredPrompt === prompt.name ? '#555' : 'transparent',
+                    hoveredPrompt === 'overview' ? '#555' : 'transparent',
                 }}
               >
-                {prompt.name}
+                Show Overview
               </li>
-            ))}
-            <li
-              onClick={() => onPromptSelect('overview')}
-              onMouseEnter={() => setHoveredPrompt('overview')}
-              onMouseLeave={() => setHoveredPrompt(null)}
-              style={{
-                cursor: 'pointer',
-                padding: '2px 5px',
-                borderRadius: 3,
-                background:
-                  hoveredPrompt === 'overview' ? '#555' : 'transparent',
-              }}
-            >
-              Show Overview
-            </li>
-          </ul>
-        </div>
-      )}
-    </div>
-  );
-};
+            </ul>
+          </div>
+        )}
+      </div>
+    );
+  }
+);
 
 export default Controls;

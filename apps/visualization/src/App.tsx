@@ -4,6 +4,9 @@ import * as d3 from 'd3-force';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import PromptControls from './components/PromptControls';
 import Controls from './components/Controls';
+import { Line2 } from 'three/examples/jsm/lines/Line2.js';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
+import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 
 const API_URL = 'http://localhost:3001';
 
@@ -22,6 +25,8 @@ interface NodeObject extends d3.SimulationNodeDatum {
   id: string;
   name: string;
   type: string;
+  x?: number;
+  y?: number;
 }
 
 interface LinkObject extends d3.SimulationLinkDatum<NodeObject> {
@@ -75,6 +80,10 @@ const mockTestCases = [
 
 const App: React.FC = () => {
   const mountRef = useRef<HTMLDivElement>(null);
+  const controlsRef = useRef<HTMLDivElement>(null);
+  const promptControlsRef = useRef<HTMLDivElement>(null);
+  const uiBoundsRef = useRef<DOMRect[]>([]);
+
   const [labels, setLabels] = useState<Label[]>([]);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [links, setLinks] = useState<Edge[]>([]);
@@ -136,7 +145,7 @@ const App: React.FC = () => {
     scene.background = new THREE.Color(0x000000);
 
     // Camera
-    const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+    const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 10000);
 
     // Renderer
     const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -150,6 +159,52 @@ const App: React.FC = () => {
     controls.screenSpacePanning = false;
     controls.minDistance = 0;
     controls.maxDistance = Infinity;
+    controls.enableZoom = false; // Disable default zoom
+
+    // --- Custom Zoom Logic ---
+    const zoomSpeed = 0.02;
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+
+      const direction = event.deltaY > 0 ? 1 : -1;
+      const zoomAmount = 1 - direction * zoomSpeed;
+
+      // Get mouse position in normalized device coordinates
+      const mouse = new THREE.Vector2();
+      mouse.x = (event.clientX / renderer.domElement.clientWidth) * 2 - 1;
+      mouse.y = -(event.clientY / renderer.domElement.clientHeight) * 2 + 1;
+
+      const vector = new THREE.Vector3(mouse.x, mouse.y, 0.5);
+      vector.unproject(camera);
+      vector.sub(camera.position).normalize();
+
+      const distance = camera.position.distanceTo(controls.target);
+      const newDistance = distance * zoomAmount;
+
+      // Move camera along the vector towards the mouse
+      const newPosition = camera.position
+        .clone()
+        .add(vector.multiplyScalar(distance - newDistance));
+
+      camera.position.copy(newPosition);
+      controls.update();
+    };
+
+    renderer.domElement.addEventListener('wheel', handleWheel, {
+      passive: false,
+    });
+    // --- End Custom Zoom Logic ---
+
+    const updateUiBounds = () => {
+      const bounds: DOMRect[] = [];
+      if (controlsRef.current) {
+        bounds.push(controlsRef.current.getBoundingClientRect());
+      }
+      if (promptControlsRef.current) {
+        bounds.push(promptControlsRef.current.getBoundingClientRect());
+      }
+      uiBoundsRef.current = bounds;
+    };
 
     const simulationNodes = nodes.map(node => ({
       ...node,
@@ -170,29 +225,39 @@ const App: React.FC = () => {
       .force('center', d3.forceCenter(0, 0));
 
     // Run simulation for a bit to get a stable initial layout
-    for (let i = 0; i < 150; ++i) {
+    for (let i = 0; i < 300; ++i) {
       simulation.tick();
     }
 
-    const nodeMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const nodeGeometry = new THREE.SphereGeometry(0.5);
-    const nodeMeshes = simulationNodes.map(
-      () => new THREE.Mesh(nodeGeometry, nodeMaterial)
+    // --- Create Points for Nodes ---
+    const nodePositions = new Float32Array(simulationNodes.length * 3);
+    const nodeGeometry = new THREE.BufferGeometry();
+    nodeGeometry.setAttribute(
+      'position',
+      new THREE.BufferAttribute(nodePositions, 3)
     );
 
-    // Set initial positions before calculating camera zoom
     simulationNodes.forEach((node, i) => {
-      if (node.x && node.y) {
-        nodeMeshes[i].position.set(node.x, node.y, 0);
-      }
+      nodePositions[i * 3] = node.x ?? 0;
+      nodePositions[i * 3 + 1] = node.y ?? 0;
+      nodePositions[i * 3 + 2] = 0.1; // z-offset to appear above lines
     });
 
-    nodeMeshes.forEach(mesh => scene.add(mesh));
+    const nodeMaterial = new THREE.PointsMaterial({
+      color: 0xffffff,
+      size: 8,
+      sizeAttenuation: false, // Ensures points are same size regardless of distance
+    });
+
+    const nodePoints = new THREE.Points(nodeGeometry, nodeMaterial);
+    scene.add(nodePoints);
 
     // --- Auto-zoom logic ---
     const box = new THREE.Box3();
-    nodeMeshes.forEach(mesh => {
-      box.expandByPoint(mesh.position);
+    simulationNodes.forEach(node => {
+      if (node.x !== undefined && node.y !== undefined) {
+        box.expandByPoint(new THREE.Vector3(node.x, node.y, 0));
+      }
     });
 
     const size = new THREE.Vector3();
@@ -205,16 +270,20 @@ const App: React.FC = () => {
     const cameraZ = Math.abs(maxDim / 1.5 / Math.tan(fov / 2));
 
     // Add padding and set a min distance
-    camera.position.set(center.x, center.y, center.z + Math.max(cameraZ, 10));
+    camera.position.set(center.x, center.y, center.z + Math.max(cameraZ, 50));
     controls.target.copy(center);
     controls.update();
 
-    const linkMaterial = new THREE.LineBasicMaterial({
+    // --- Create Lines ---
+    const linkMaterial = new LineMaterial({
       color: 0xffffff,
+      linewidth: 2, // in pixels
       transparent: true,
-      opacity: 0.5,
+      opacity: 0.6,
     });
-    const linkMeshes: THREE.Line[] = [];
+    linkMaterial.resolution.set(width, height); // Set resolution
+
+    const linkMeshes: Line2[] = [];
 
     // Animation loop
     const animate = () => {
@@ -225,11 +294,14 @@ const App: React.FC = () => {
       simulation.tick();
 
       // Update node positions from simulation
+      const currentPositions = nodePoints.geometry.attributes.position
+        .array as Float32Array;
       simulationNodes.forEach((node, i) => {
-        if (node.x && node.y) {
-          nodeMeshes[i].position.set(node.x, node.y, 0);
-        }
+        currentPositions[i * 3] = node.x ?? 0;
+        currentPositions[i * 3 + 1] = node.y ?? 0;
+        // z is already 0.1
       });
+      nodePoints.geometry.attributes.position.needsUpdate = true;
 
       const newLabels: Label[] = [];
       simulationNodes.forEach(node => {
@@ -240,7 +312,17 @@ const App: React.FC = () => {
           const x = (vector.x * 0.5 + 0.5) * renderer.domElement.clientWidth;
           const y = (vector.y * -0.5 + 0.5) * renderer.domElement.clientHeight;
 
-          newLabels.push({ name: node.name, x, y, type: node.type });
+          const isOccluded = uiBoundsRef.current.some(
+            bound =>
+              x > bound.left &&
+              x < bound.right &&
+              y > bound.top &&
+              y < bound.bottom
+          );
+
+          if (!isOccluded) {
+            newLabels.push({ name: node.name, x, y, type: node.type });
+          }
         }
       });
       setLabels(newLabels);
@@ -250,17 +332,17 @@ const App: React.FC = () => {
         scene.remove(link);
         link.geometry.dispose();
       });
-      linkMeshes.length = 0;
+      linkMeshes.length = 0; // Clear the array
 
       simulationLinks.forEach(link => {
         const source = link.source as NodeObject;
         const target = link.target as NodeObject;
         if (source.x && source.y && target.x && target.y) {
-          const geometry = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(source.x, source.y, 0),
-            new THREE.Vector3(target.x, target.y, 0),
-          ]);
-          const line = new THREE.Line(geometry, linkMaterial);
+          const geometry = new LineGeometry();
+          // Keep lines at z=0
+          geometry.setPositions([source.x, source.y, 0, target.x, target.y, 0]);
+
+          const line = new Line2(geometry, linkMaterial);
           scene.add(line);
           linkMeshes.push(line);
         }
@@ -271,42 +353,60 @@ const App: React.FC = () => {
 
     animate();
 
-    // Handle window resize
     const handleResize = () => {
-      if (mountRef.current) {
-        const newWidth = mountRef.current.clientWidth;
-        const newHeight = mountRef.current.clientHeight;
-        camera.aspect = newWidth / newHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(newWidth, newHeight);
-      }
+      if (!mountRef.current) return;
+      const mount = mountRef.current;
+      camera.aspect = mount.clientWidth / mount.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(mount.clientWidth, mount.clientHeight);
+      linkMaterial.resolution.set(mount.clientWidth, mount.clientHeight); // Update on resize
+      updateUiBounds();
     };
 
     window.addEventListener('resize', handleResize);
+    updateUiBounds(); // Initial call
 
-    // Cleanup
     return () => {
       window.removeEventListener('resize', handleResize);
+      renderer.domElement.removeEventListener('wheel', handleWheel);
       if (mountRef.current && mountRef.current.contains(renderer.domElement)) {
         mountRef.current.removeChild(renderer.domElement);
       }
+
+      // Cleanup simulation
+      simulation.stop();
     };
   }, [nodes, links]);
 
   return (
-    <div style={{ position: 'relative', width: '100vw', height: '100vh' }}>
+    <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
+      <div ref={mountRef} style={{ width: '100%', height: '100%' }} />
+      <div
+        style={{
+          position: 'absolute',
+          top: '10px',
+          right: '10px',
+          color: 'white',
+          background: 'rgba(0,0,0,0.5)',
+          padding: '10px',
+          borderRadius: '5px',
+        }}
+      >
+        {isGenerating ? 'Generating...' : ''}
+      </div>
       <Controls
+        ref={controlsRef}
         testCases={mockTestCases}
         selectedCase={selectedCase}
         onCaseChange={setSelectedCase}
         onPromptSelect={handleGenerate}
       />
       <PromptControls
+        ref={promptControlsRef}
         onGenerate={handleGenerate}
         onReset={handleReset}
         isGenerating={isGenerating}
       />
-      <div ref={mountRef} style={{ width: '100%', height: '100%' }} />
       {labels.map((label, index) => (
         <div
           key={index}
@@ -314,10 +414,10 @@ const App: React.FC = () => {
             position: 'absolute',
             left: label.x,
             top: label.y,
-            color: 'white',
-            padding: '2px 5px',
-            borderRadius: '3px',
-            transform: 'translate(-50%, -150%)', // Adjust to float above the node
+            color: label.type === 'Intent' ? 'cyan' : 'white',
+            transform: 'translate(-50%, -50%)',
+            pointerEvents: 'none',
+            textShadow: '1px 1px 2px black',
           }}
         >
           {label.name}
