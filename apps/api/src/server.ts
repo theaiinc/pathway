@@ -45,19 +45,30 @@ app.post('/generate', async (req, res) => {
 
   try {
     const existingWorkflow = await pathwayManager.findSimilarWorkflow(prompt);
+    let highlightedNodeId: string | null = null;
 
     if (existingWorkflow) {
       console.log('[API] Found existing workflow. No retention needed.');
+      // Find the intent node in the returned subgraph to highlight it
+      const intentNode = existingWorkflow.findNode(
+        node => existingWorkflow.getNodeAttribute(node, 'type') === 'Intent'
+      );
+      if (intentNode) {
+        highlightedNodeId = intentNode;
+      }
     } else {
       console.log('[API] No suitable workflow found. Generating a new one.');
       const newWorkflow = await pathwayManager.generateNewWorkflow(prompt);
       if (newWorkflow) {
-        await pathwayManager.retainWorkflow(newWorkflow, prompt);
+        highlightedNodeId = await pathwayManager.retainWorkflow(
+          newWorkflow,
+          prompt
+        );
       }
     }
 
     const updatedGraph = graphStore.getGraph().export();
-    res.json(updatedGraph);
+    res.json({ graph: updatedGraph, highlightedNodeId });
   } catch (error) {
     console.error('Error generating workflow:', error);
     res.status(500).send('Failed to generate workflow');

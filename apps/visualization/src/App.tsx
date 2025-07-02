@@ -101,6 +101,9 @@ const App: React.FC = () => {
   const [hoveredWorkflowId, setHoveredWorkflowId] = useState<string | null>(
     null
   );
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(
+    null
+  );
 
   // Use a ref to pass the latest hovered ID to the animation loop without re-triggering the effect
   const hoveredWorkflowIdRef = useRef(hoveredWorkflowId);
@@ -127,15 +130,29 @@ const App: React.FC = () => {
 
   const handleGenerate = async (prompt: string) => {
     setIsGenerating(true);
+    setSelectedWorkflowId(null); // Clear previous selection
     const response = await fetch(`${API_URL}/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt }),
     });
-    const data: GraphData = await response.json();
-    if (data && data.nodes) {
-      setNodes(data.nodes.map(n => ({ id: n.key, ...n.attributes })));
-      setLinks(data.edges.map(e => ({ source: e.source, target: e.target })));
+    const data = await response.json(); // { graph, highlightedNodeId }
+    if (data.graph && data.graph.nodes) {
+      setNodes(
+        data.graph.nodes.map((n: GraphologyNode) => ({
+          id: n.key,
+          ...n.attributes,
+        }))
+      );
+      setLinks(
+        data.graph.edges.map((e: GraphologyEdge) => ({
+          source: e.source,
+          target: e.target,
+        }))
+      );
+      if (data.highlightedNodeId) {
+        setSelectedWorkflowId(getWorkflowId(data.highlightedNodeId));
+      }
     }
     setIsGenerating(false);
   };
@@ -326,10 +343,14 @@ const App: React.FC = () => {
         positions[i * 3 + 1] = node.y ?? 0;
         positions[i * 3 + 2] = 0.1; // z-offset
         const wfId = getWorkflowId(node.id);
-        const color =
-          wfId && wfId === hoveredWorkflowIdRef.current
-            ? highlightColor
-            : defaultColor;
+
+        const isHighlighted =
+          (selectedWorkflowId && wfId === selectedWorkflowId) ||
+          (!selectedWorkflowId &&
+            wfId &&
+            wfId === hoveredWorkflowIdRef.current);
+
+        const color = isHighlighted ? highlightColor : defaultColor;
         colors[i * 3] = color.r;
         colors[i * 3 + 1] = color.g;
         colors[i * 3 + 2] = color.b;
@@ -380,7 +401,11 @@ const App: React.FC = () => {
           geometry.setPositions([source.x, source.y, 0, target.x, target.y, 0]);
 
           const wfId = getWorkflowId(source.id);
-          const isHighlighted = wfId && wfId === hoveredWorkflowIdRef.current;
+          const isHighlighted =
+            (selectedWorkflowId && wfId === selectedWorkflowId) ||
+            (!selectedWorkflowId &&
+              wfId &&
+              wfId === hoveredWorkflowIdRef.current);
 
           // Clone material to set unique color
           const currentMaterial = linkMaterial.clone();
@@ -464,7 +489,10 @@ const App: React.FC = () => {
               left: label.x,
               top: label.y,
               color: label.type === 'Intent' ? 'cyan' : 'white',
-              fontWeight: isHovered ? 'bold' : 'normal',
+              fontWeight:
+                (selectedWorkflowId && wfId === selectedWorkflowId) || isHovered
+                  ? 'bold'
+                  : 'normal',
               transform: 'translate(-50%, -50%)',
               pointerEvents: 'none',
               textShadow: '1px 1px 2px black',

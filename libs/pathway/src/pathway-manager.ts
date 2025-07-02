@@ -130,7 +130,7 @@ export class PathwayManager {
   async retainWorkflow(
     workflow: MultiGraph,
     originalQuery: string
-  ): Promise<void> {
+  ): Promise<string | null> {
     console.log(
       `[Manager] Retaining new workflow for query: "${originalQuery}"`
     );
@@ -174,7 +174,7 @@ export class PathwayManager {
 
     if (!intentNodeId) {
       console.error('[Manager] Cannot retain workflow: Intent node not found.');
-      return;
+      return null;
     }
 
     // Update the intent node with the new vectorId and the original query
@@ -194,6 +194,7 @@ export class PathwayManager {
     await this.graphStore.saveGraph();
 
     console.log(`[Manager] Workflow retained with new vectorId: ${vectorId}`);
+    return intentNodeId;
   }
 
   private scoreWorkflow(workflow: MultiGraph, similarity: number): number {
