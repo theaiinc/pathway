@@ -81,6 +81,19 @@ export class VectorStore {
     }
   }
 
+  async clearCollection(): Promise<void> {
+    if (this.collection) {
+      await this.client.deleteCollection({ name: this.collectionName });
+      this.collection = await this.client.createCollection({
+        name: this.collectionName,
+        embeddingFunction: embedder,
+      });
+      console.log(
+        `ChromaDB collection '${this.collectionName}' cleared and recreated.`
+      );
+    }
+  }
+
   async addIntention(text: string, metadata: object = {}): Promise<string> {
     const id = uuidv4();
     await this.collection.add({

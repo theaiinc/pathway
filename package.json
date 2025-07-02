@@ -14,6 +14,8 @@
   "dependencies": {
     "chromadb": "^1.8.1",
     "graphology": "^0.25.4",
+    "graphology-operators": "^1.6.1",
+    "graphology-traversal": "^0.3.1",
     "openai": "^4.15.3",
     "uuid": "^9.0.1"
   },

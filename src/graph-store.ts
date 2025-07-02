@@ -1,6 +1,7 @@
 import pkg from 'graphology';
 const { MultiGraph: Graph } = pkg;
 import { v4 as uuidv4 } from 'uuid';
+import { subgraph } from 'graphology-operators';
 
 // --- Graph Schema Definitions ---
 
@@ -64,6 +65,29 @@ export class GraphStore {
     const edgeId = uuidv4();
     this.graph.addEdge(sourceId, targetId, { id: edgeId, type, ...properties });
     return edgeId;
+  }
+
+  getWorkflowSubgraph(
+    startNodeId: string
+  ): import('graphology').MultiGraph | null {
+    if (!this.graph.hasNode(startNodeId)) {
+      console.error('Cannot get subgraph: start node does not exist.');
+      return null;
+    }
+
+    const nodesToVisit: string[] = [startNodeId];
+    const visited = new Set<string>();
+
+    while (nodesToVisit.length > 0) {
+      const currentNode = nodesToVisit.shift()!;
+      if (!visited.has(currentNode)) {
+        visited.add(currentNode);
+        const neighbors = this.graph.outNeighbors(currentNode);
+        nodesToVisit.push(...neighbors);
+      }
+    }
+
+    return subgraph(this.graph, Array.from(visited));
   }
 
   getGraph(): import('graphology').MultiGraph {

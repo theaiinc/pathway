@@ -9,6 +9,7 @@ async function main() {
   console.log('--- Initializing Stores & Manager ---');
   const vectorStore = new VectorStore();
   await vectorStore.initialize();
+  await vectorStore.clearCollection();
   const graphStore = new GraphStore();
   const pathwayManager = new PathwayManager(vectorStore, graphStore);
   console.log('Stores and Manager initialized.');
@@ -49,8 +50,13 @@ async function main() {
 
   if (retrievedWorkflow) {
     console.log(
-      '[Manager] Successfully retrieved workflow intent:',
-      retrievedWorkflow.label
+      `[Manager] Successfully retrieved workflow with ${retrievedWorkflow.order} nodes.`
+    );
+
+    console.log("\n--- Step 3: Use Manager to 'Adapt' the workflow ---");
+    const adaptedWorkflow = pathwayManager.adaptWorkflow(retrievedWorkflow, {});
+    console.log(
+      `[Manager] Adaptation complete. New workflow has ${adaptedWorkflow.order} nodes.`
     );
   } else {
     console.log('[Manager] Failed to retrieve a similar workflow.');

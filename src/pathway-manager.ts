@@ -1,5 +1,5 @@
 import { VectorStore } from './vector-store.js';
-import { GraphStore, IntentNode } from './graph-store.js';
+import { GraphStore, IntentNode, StepNode } from './graph-store.js';
 
 export class PathwayManager {
   private vectorStore: VectorStore;
@@ -32,32 +32,45 @@ export class PathwayManager {
     const topMatchId = searchResults.ids[0][0];
     console.log(`[Manager] Found top match with vectorId: ${topMatchId}`);
 
-    // This is a placeholder for finding the graph node.
-    // In a real scenario, we'd search the graph for the node with this vectorId.
-    // For now, we'll assume a direct mapping, which our current test setup provides.
     const graph = this.graphStore.getGraph();
-    let foundWorkflow: any = null;
+    let workflowSubgraph: import('graphology').MultiGraph | null = null;
 
-    graph.forEachNode((node, attributes) => {
+    for (const node of graph.nodes()) {
+      const attributes = graph.getNodeAttributes(node);
       if (attributes.type === 'Intent' && attributes.vectorId === topMatchId) {
-        const intentNode = attributes as IntentNode;
         console.log(
-          `[Manager] Found corresponding IntentNode in GraphStore: ${intentNode.label}`
+          `[Manager] Found corresponding IntentNode in GraphStore: ${attributes.label}`
         );
-        // In a real implementation, we would return the subgraph for this workflow.
-        // For now, returning the node is sufficient to prove the link.
-        foundWorkflow = intentNode;
-        return; // Exit loop early
+        workflowSubgraph = this.graphStore.getWorkflowSubgraph(attributes.id);
+        break; // Exit loop once found
       }
-    });
-
-    if (foundWorkflow) {
-      return foundWorkflow;
     }
 
-    console.log(
-      `[Manager] Could not find a corresponding IntentNode in the graph for vectorId: ${topMatchId}`
-    );
-    return null;
+    if (workflowSubgraph) {
+      return workflowSubgraph;
+    } else {
+      console.log(
+        `[Manager] Could not find a corresponding IntentNode in the graph for vectorId: ${topMatchId}`
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Adapts a retrieved workflow to a new context.
+   * This is a placeholder for the "Reuse" phase of the CBR cycle.
+   * @param workflow The subgraph of the workflow to adapt.
+   * @param newContext An object describing the necessary adaptations.
+   * @returns A new, adapted workflow subgraph.
+   */
+  adaptWorkflow(
+    workflow: import('graphology').MultiGraph,
+    newContext: any
+  ): import('graphology').MultiGraph {
+    console.log('\n[Manager] Adapting workflow...');
+    // For now, just return a clone of the workflow without changes.
+    const newWorkflow = workflow.copy();
+    console.log('[Manager] Placeholder adaptation complete (workflow cloned).');
+    return newWorkflow;
   }
 }
