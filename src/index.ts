@@ -1,60 +1,60 @@
 import { VectorStore } from './vector-store.js';
 import { GraphStore, StepNode } from './graph-store.js';
+import { PathwayManager } from './pathway-manager.js';
 import { v4 as uuidv4 } from 'uuid';
 
-export { VectorStore, GraphStore };
+export { VectorStore, GraphStore, PathwayManager };
 
 async function main() {
-  console.log('--- Initializing Stores ---');
+  console.log('--- Initializing Stores & Manager ---');
   const vectorStore = new VectorStore();
   await vectorStore.initialize();
   const graphStore = new GraphStore();
-  console.log('VectorStore and GraphStore initialized.');
+  const pathwayManager = new PathwayManager(vectorStore, graphStore);
+  console.log('Stores and Manager initialized.');
 
-  console.log('\n--- Step 1: Add a new intention to the VectorStore ---');
-  const sampleIntention = 'How to read a file in TypeScript?';
-  const vectorId = await vectorStore.addIntention(sampleIntention, {
+  console.log('\n--- Step 1: Create an initial workflow ---');
+  const initialQuery = 'How do I read a file in node?';
+  const vectorId = await vectorStore.addIntention(initialQuery, {
     area: 'File System',
-    language: 'TypeScript',
+    language: 'Node.js',
   });
-  console.log(`Added intention to VectorStore with vectorId: ${vectorId}`);
-
-  console.log(
-    '\n--- Step 2: Create a corresponding workflow in the GraphStore ---'
-  );
   const steps: StepNode[] = [
     {
       id: uuidv4(),
       type: 'Step',
-      label: 'Import fs module',
+      label: 'Import fs promises',
       action: 'import_module',
-      parameters: { module: 'fs' },
+      parameters: { module: 'fs/promises' },
     },
     {
       id: uuidv4(),
       type: 'Step',
-      label: 'Use fs.readFileSync',
+      label: 'Use fs.readFile',
       action: 'call_function',
       parameters: {
-        function: 'fs.readFileSync',
+        function: 'fs.readFile',
         args: ['/path/to/file.txt', 'utf8'],
       },
     },
   ];
-  graphStore.createWorkflow(sampleIntention, vectorId, steps);
+  graphStore.createWorkflow(initialQuery, vectorId, steps);
+  console.log('Initial workflow created.');
 
-  console.log('\n--- Step 3: Verify Graph Content ---');
-  const graph = graphStore.getGraph();
-  console.log(`Graph contains ${graph.order} nodes and ${graph.size} edges.`);
-  graph.forEachNode((node, attributes) => {
-    console.log(`Node: ${node} (${attributes.type}) - ${attributes.label}`);
-  });
+  console.log(
+    "\n--- Step 2: Use Manager to 'Retrieve' the workflow with a similar query ---"
+  );
+  const newQuery = 'How can I open a file using nodejs?';
+  const retrievedWorkflow = await pathwayManager.findSimilarWorkflow(newQuery);
 
-  console.log('\n--- Step 4: Search for a similar intention ---');
-  const searchQuery = 'How do I open a file in TS?';
-  console.log(`Searching for intentions similar to: "${searchQuery}"`);
-  const searchResult = await vectorStore.searchSimilarIntentions(searchQuery);
-  console.log('Search results:', searchResult);
+  if (retrievedWorkflow) {
+    console.log(
+      '[Manager] Successfully retrieved workflow intent:',
+      retrievedWorkflow.label
+    );
+  } else {
+    console.log('[Manager] Failed to retrieve a similar workflow.');
+  }
 }
 
 main().catch(error => {
