@@ -8,6 +8,7 @@ export default defineConfig({
   root: __dirname,
   plugins: [react(), nxViteTsPaths()],
   server: {
+    port: 4200,
     fs: {
       allow: ['../../node_modules'],
     },

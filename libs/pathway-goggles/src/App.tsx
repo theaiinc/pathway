@@ -8,11 +8,14 @@ import Controls from './components/Controls';
 import SearchControls from './components/SearchControls';
 import Statistics from './components/Statistics';
 import UserPrompts from './components/UserPrompts';
+import WorkflowDisplay from './components/WorkflowDisplay';
 import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 
-const API_URL = 'http://localhost:3001';
+interface AppProps {
+  apiUrl: string;
+}
 
 // --- Interfaces ---
 interface Node {
@@ -93,7 +96,7 @@ const getWorkflowId = (nodeId: string): string | null => {
 };
 
 // --- Main Component ---
-const App: React.FC = () => {
+const App: React.FC<AppProps> = ({ apiUrl }) => {
   // --- Refs and State ---
   const mountRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
@@ -124,7 +127,11 @@ const App: React.FC = () => {
     null
   );
   const [highlightedNodeIds, setHighlightedNodeIds] = useState<string[]>([]);
+  const [searchResults, setSearchResults] = useState<
+    { id: string; name: string }[]
+  >([]);
   const [userPrompts, setUserPrompts] = useState<string[]>([]);
+  const [orderedWorkflow, setOrderedWorkflow] = useState<Node[]>([]);
 
   // Use a ref to pass the latest hovered ID to the animation loop without re-triggering the effect
   const hoveredWorkflowIdRef = useRef(hoveredWorkflowId);
@@ -137,6 +144,48 @@ const App: React.FC = () => {
     selectedWorkflowIdRef.current = selectedWorkflowId;
   }, [selectedWorkflowId]);
 
+  // --- Ordered Workflow Effect ---
+  useEffect(() => {
+    if (!selectedWorkflowId) {
+      setOrderedWorkflow([]);
+      return;
+    }
+
+    const workflowNodes = nodes.filter(
+      node => getWorkflowId(node.id) === selectedWorkflowId
+    );
+    const workflowLinks = links.filter(
+      link =>
+        getWorkflowId(link.source as string) === selectedWorkflowId &&
+        getWorkflowId(link.target as string) === selectedWorkflowId
+    );
+
+    const startNode = workflowNodes.find(node => node.type === 'Intent');
+    if (!startNode) {
+      setOrderedWorkflow([]);
+      return;
+    }
+
+    const ordered: Node[] = [startNode];
+    const linkMap = new Map(workflowLinks.map(l => [l.source, l.target]));
+    let currentNode = startNode;
+
+    while (
+      linkMap.has(currentNode.id) &&
+      ordered.length < workflowNodes.length
+    ) {
+      const nextNodeId = linkMap.get(currentNode.id);
+      const nextNode = workflowNodes.find(n => n.id === nextNodeId);
+      if (nextNode) {
+        ordered.push(nextNode);
+        currentNode = nextNode;
+      } else {
+        break;
+      }
+    }
+    setOrderedWorkflow(ordered);
+  }, [selectedWorkflowId, nodes, links]);
+
   // --- Camera Animation Effect ---
   useEffect(() => {
     if (selectedWorkflowId) {
@@ -146,7 +195,7 @@ const App: React.FC = () => {
 
   // --- API Handlers ---
   useEffect(() => {
-    fetch(`${API_URL}/graph`)
+    fetch(`${apiUrl}/graph`)
       .then(res => res.json())
       .then((data: GraphData) => {
         if (data && data.nodes) {
@@ -163,7 +212,7 @@ const App: React.FC = () => {
           setLinks([]);
         }
       });
-  }, []);
+  }, [apiUrl]);
 
   const handleGenerate = async (prompt: string) => {
     if (!userPrompts.includes(prompt)) {
@@ -171,7 +220,7 @@ const App: React.FC = () => {
     }
     setIsGenerating(true);
     setSelectedWorkflowId(null); // Clear previous selection
-    const response = await fetch(`${API_URL}/generate`, {
+    const response = await fetch(`${apiUrl}/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt }),
@@ -264,7 +313,7 @@ const App: React.FC = () => {
     );
     if (confirmDelete) {
       try {
-        const response = await fetch(`${API_URL}/workflow/${workflowId}`, {
+        const response = await fetch(`${apiUrl}/workflow/${workflowId}`, {
           method: 'DELETE',
         });
 
@@ -314,9 +363,11 @@ const App: React.FC = () => {
 
   const handleReset = async () => {
     setIsGenerating(true);
-    await fetch(`${API_URL}/reset`, { method: 'POST' });
+    await fetch(`${apiUrl}/reset`, { method: 'POST' });
     setNodes([]);
     setLinks([]);
+    setUserPrompts([]);
+    setSelectedWorkflowId(null);
     setIsGenerating(false);
   };
 
@@ -324,61 +375,58 @@ const App: React.FC = () => {
   const handleSearch = (query: string) => {
     if (!query) {
       setHighlightedNodeIds([]);
+      setSearchResults([]);
       return;
     }
 
     const results = simulationNodesRef.current
       .filter(node => node.name.toLowerCase().includes(query.toLowerCase()))
-      .map(node => node.id);
-    setHighlightedNodeIds(results);
+      .map(node => ({ id: node.id, name: node.name }));
+    setSearchResults(results);
+    setHighlightedNodeIds(results.map(r => r.id));
+  };
 
-    // Animate camera to the first search result
-    if (results.length > 0) {
-      const firstResultId = results[0];
-      const nodeData = simulationNodesRef.current.find(
-        n => n.id === firstResultId
+  const handleSearchResultClick = (nodeId: string) => {
+    const nodeData = simulationNodesRef.current.find(n => n.id === nodeId);
+    const camera = cameraRef.current;
+    const controls = controlsRef3D.current;
+
+    if (nodeData && camera && controls) {
+      const targetPosition = new THREE.Vector3(
+        nodeData.x,
+        nodeData.y,
+        nodeData.z
       );
-      const nodePoints = nodePointsRef.current;
-      const camera = cameraRef.current;
-      const controls = controlsRef3D.current;
+      const direction = new THREE.Vector3()
+        .subVectors(camera.position, controls.target)
+        .normalize();
+      const distance = 100;
 
-      if (nodeData && nodePoints && camera && controls) {
-        const targetPosition = new THREE.Vector3(
-          nodeData.x,
-          nodeData.y,
-          nodeData.z
-        );
-        const direction = new THREE.Vector3()
-          .subVectors(camera.position, controls.target)
-          .normalize();
-        const distance = 100;
+      const startPos = camera.position.clone();
+      const endPos = new THREE.Vector3().addVectors(
+        targetPosition,
+        direction.multiplyScalar(distance)
+      );
+      const startTarget = controls.target.clone();
+      const endTarget = targetPosition;
 
-        const startPos = camera.position.clone();
-        const endPos = new THREE.Vector3().addVectors(
-          targetPosition,
-          direction.multiplyScalar(distance)
-        );
-        const startTarget = controls.target.clone();
-        const endTarget = targetPosition;
+      let startTime: number | null = null;
+      const duration = 500; // ms
 
-        let startTime: number | null = null;
-        const duration = 500; // ms
+      const tick = (time: number) => {
+        if (startTime === null) startTime = time;
+        const elapsed = time - startTime;
+        const alpha = Math.min(elapsed / duration, 1);
 
-        const tick = (time: number) => {
-          if (startTime === null) startTime = time;
-          const elapsed = time - startTime;
-          const alpha = Math.min(elapsed / duration, 1);
+        camera.position.lerpVectors(startPos, endPos, alpha);
+        controls.target.lerpVectors(startTarget, endTarget, alpha);
+        controls.update();
 
-          camera.position.lerpVectors(startPos, endPos, alpha);
-          controls.target.lerpVectors(startTarget, endTarget, alpha);
-          controls.update();
-
-          if (alpha < 1) {
-            requestAnimationFrame(tick);
-          }
-        };
-        requestAnimationFrame(tick);
-      }
+        if (alpha < 1) {
+          requestAnimationFrame(tick);
+        }
+      };
+      requestAnimationFrame(tick);
     }
   };
 
@@ -886,98 +934,54 @@ const App: React.FC = () => {
     };
   }, [selectedWorkflowId, nodes, links]);
 
-  // --- Camera Animation Effect (Implementation) ---
-  useEffect(() => {
-    if (selectedWorkflowId) {
-      const scene = sceneRef.current;
-      const camera = cameraRef.current;
-      const controls = controlsRef3D.current;
-      const nodePoints = nodePointsRef.current;
-      const simulationNodes = simulationNodesRef.current;
-
-      if (!scene || !camera || !controls || !nodePoints || !simulationNodes)
-        return;
-
-      const selectedNodePositions: THREE.Vector3[] = [];
-      simulationNodes.forEach((node, i) => {
-        if (getWorkflowId(node.id) === selectedWorkflowId) {
-          const positionArray = nodePoints.geometry.attributes.position.array;
-          selectedNodePositions.push(
-            new THREE.Vector3(
-              positionArray[i * 3],
-              positionArray[i * 3 + 1],
-              positionArray[i * 3 + 2]
-            )
-          );
-        }
-      });
-
-      if (selectedNodePositions.length === 0) return;
-
-      const box = new THREE.Box3();
-      selectedNodePositions.forEach(pos => {
-        box.expandByPoint(pos);
-      });
-
-      const center = new THREE.Vector3();
-      box.getCenter(center);
-      const size = new THREE.Vector3();
-      box.getSize(size);
-      const maxDim = Math.max(size.x, size.y, size.z);
-      const fov = camera.fov * (Math.PI / 180);
-      const cameraZ = Math.abs(maxDim / 1.5 / Math.tan(fov / 2));
-
-      // Simple animation (in a real app, use a library like GSAP)
-      const startPos = camera.position.clone();
-      const endPos = new THREE.Vector3(
-        center.x,
-        center.y,
-        center.z + Math.max(cameraZ, 50)
-      );
-      const startTarget = controls.target.clone();
-      const endTarget = center;
-
-      let startTime: number | null = null;
-      const duration = 1000; // 1 second
-
-      const tick = (time: number) => {
-        if (startTime === null) startTime = time;
-        const elapsed = time - startTime;
-        const alpha = Math.min(elapsed / duration, 1);
-
-        camera.position.lerpVectors(startPos, endPos, alpha);
-        controls.target.lerpVectors(startTarget, endTarget, alpha);
-        controls.update();
-
-        if (alpha < 1) {
-          requestAnimationFrame(tick);
-        }
-      };
-      requestAnimationFrame(tick);
-    }
-  }, [selectedWorkflowId]);
-
   // --- Calculate Statistics ---
   const workflowCount = new Set(
     nodes.map(node => getWorkflowId(node.id)).filter(id => id)
   ).size;
 
-  return (
-    <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
-      <div ref={mountRef} style={{ width: '100%', height: '100%' }} />
+  // --- Loading Overlay Component ---
+  const LoadingOverlay = () => (
+    <div
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        background: 'rgba(0, 0, 0, 0.7)',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        color: 'white',
+        zIndex: 1000,
+      }}
+    >
       <div
         style={{
-          position: 'absolute',
-          top: '10px',
-          right: '10px',
-          color: 'white',
-          background: 'rgba(0,0,0,0.5)',
-          padding: '10px',
-          borderRadius: '5px',
+          border: '4px solid rgba(255, 255, 255, 0.3)',
+          borderRadius: '50%',
+          borderTop: '4px solid white',
+          width: '40px',
+          height: '40px',
+          animation: 'spin 1s linear infinite',
+          marginBottom: '20px',
         }}
-      >
-        {isGenerating ? 'Generating...' : ''}
-      </div>
+      ></div>
+      <p>Generating...</p>
+      <style>{`
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `}</style>
+    </div>
+  );
+
+  return (
+    <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
+      {isGenerating && <LoadingOverlay />}
+      <div ref={mountRef} style={{ width: '100%', height: '100%' }} />
       <Statistics
         ref={statisticsRef}
         nodeCount={nodes.length}
@@ -992,7 +996,12 @@ const App: React.FC = () => {
         onPromptSelect={handleGenerate}
         onShowOverview={handleShowOverview}
       />
-      <SearchControls ref={searchControlsRef} onSearch={handleSearch} />
+      <SearchControls
+        ref={searchControlsRef}
+        onSearch={handleSearch}
+        results={searchResults}
+        onResultClick={handleSearchResultClick}
+      />
       <UserPrompts
         ref={userPromptsRef}
         prompts={userPrompts}
@@ -1004,6 +1013,7 @@ const App: React.FC = () => {
         onReset={handleReset}
         isGenerating={isGenerating}
       />
+      <WorkflowDisplay nodes={orderedWorkflow} />
       {labels.map((label, index) => {
         const wfId = getWorkflowId(label.id);
         const isHovered = wfId ? wfId === hoveredWorkflowId : false;
@@ -1032,6 +1042,30 @@ const App: React.FC = () => {
           </div>
         );
       })}
+      <style>{`
+        .workflow-display {
+          position: absolute;
+          bottom: 20px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: rgba(0, 0, 0, 0.7);
+          color: white;
+          padding: 10px 20px;
+          border-radius: 10px;
+          display: flex;
+          align-items: center;
+          font-family: monospace;
+          z-index: 100;
+        }
+        .workflow-node {
+          background: #333;
+          padding: 5px 10px;
+          border-radius: 5px;
+        }
+        .workflow-arrow {
+          margin: 0 10px;
+        }
+      `}</style>
     </div>
   );
 };
