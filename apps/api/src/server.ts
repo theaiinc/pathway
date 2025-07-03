@@ -25,6 +25,9 @@ const azureOpenAIEmbeddingsDeploymentName = process.env
 const azureOpenAIChatDeploymentName = process.env
   .AZURE_OPENAI_CHAT_DEPLOYMENT_NAME as string;
 
+const IS_DEMO_MODE = process.env.DEMO_MODE === 'true';
+const MAX_WORKFLOWS = 50; // Set a reasonable limit for the demo
+
 // Initialize stores
 const graphStore = new GraphStore();
 const vectorStore = new VectorStore();
@@ -58,6 +61,22 @@ app.post('/generate', async (req, res) => {
       }
     } else {
       console.log('[API] No suitable workflow found. Generating a new one.');
+
+      // In demo mode, check if we need to prune an old workflow
+      if (IS_DEMO_MODE) {
+        const uniqueWorkflowIds = await graphStore.getWorkflowIds();
+        if (uniqueWorkflowIds.length >= MAX_WORKFLOWS) {
+          // Find the oldest workflow (first one added) and delete it
+          const oldestWorkflowId = await graphStore.getOldestWorkflowId();
+          if (oldestWorkflowId) {
+            console.log(
+              `[DEMO MODE] Max workflows reached. Deleting oldest workflow: ${oldestWorkflowId}`
+            );
+            await pathwayManager.deleteWorkflow(oldestWorkflowId);
+          }
+        }
+      }
+
       const newWorkflow = await pathwayManager.generateNewWorkflow(prompt);
       if (newWorkflow) {
         highlightedNodeId = await pathwayManager.retainWorkflow(

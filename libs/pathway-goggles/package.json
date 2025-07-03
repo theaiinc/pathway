@@ -14,12 +14,13 @@
   },
   "dependencies": {
     "@emotion/react": "^11.11.4",
+    "@r2wc/react-to-web-component": "^2.0.4",
     "@types/three": "^0.178.0",
     "d3-force-3d": "^3.0.6",
+    "gsap": "^3.13.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-force-graph": "^1.44.4",
-    "@r2wc/react-to-web-component": "^2.0.4",
     "three": "^0.165.0",
     "uuid": "^10.0.0"
   },

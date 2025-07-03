@@ -37,6 +37,8 @@ export type GraphNode = IntentNode | StepNode; // Will expand with SubTask, Deci
 
 export class GraphStore {
   private graph: MultiGraph;
+  // Map to store workflow creation order
+  private workflowCreationTimes: Map<string, number> = new Map();
 
   constructor() {
     this.graph = new MultiGraph();
@@ -48,10 +50,66 @@ export class GraphStore {
     });
   }
 
+  // Helper to extract workflow ID from a node ID
+  private getWorkflowId(nodeId: string): string | null {
+    // Assuming a consistent prefix for all nodes in a workflow, e.g., "workflowId_nodeName"
+    // This part is crucial and needs to be implemented based on your ID schema.
+    // For now, let's assume the part before the first underscore is the workflow ID.
+    const match = nodeId.match(/^([a-f0-9-]+)/);
+    return match ? match[1] : null;
+  }
+
+  async getWorkflowIds(): Promise<string[]> {
+    const intentNodes = this.graph.filterNodes(
+      (node, attrs) => attrs.type === 'Intent'
+    );
+    const workflowIds = new Set<string>();
+    intentNodes.forEach(nodeId => {
+      const wfId = this.getWorkflowId(nodeId);
+      if (wfId) {
+        workflowIds.add(wfId);
+      }
+    });
+    return Array.from(workflowIds);
+  }
+
+  async getOldestWorkflowId(): Promise<string | null> {
+    if (this.workflowCreationTimes.size === 0) {
+      // Fallback for graphs loaded from old format without timestamps,
+      // assuming the first "Intent" node encountered is the oldest.
+      console.warn(
+        '[GraphStore] No workflow timestamps found. Falling back to insertion order for finding oldest workflow. This may be inaccurate.'
+      );
+      for (const node of this.graph.nodes()) {
+        if (this.graph.getNodeAttribute(node, 'type') === 'Intent') {
+          const wfId = this.getWorkflowId(node);
+          if (wfId) return wfId;
+        }
+      }
+      return null;
+    }
+
+    let oldestId: string | null = null;
+    let oldestTime = Infinity;
+
+    for (const [id, time] of this.workflowCreationTimes.entries()) {
+      if (time < oldestTime) {
+        oldestTime = time;
+        oldestId = id;
+      }
+    }
+    return oldestId;
+  }
+
   async saveGraph(): Promise<void> {
     try {
       const serializedGraph = this.graph.export();
-      const data = JSON.stringify(serializedGraph, null, 2);
+      // Let's also save the creation times
+      const exportData = {
+        graph: serializedGraph,
+        workflowCreationTimes: Object.fromEntries(this.workflowCreationTimes),
+      };
+      const data = JSON.stringify(exportData, null, 2);
       // Ensure the directory exists before writing
       await fs.mkdir(GRAPH_DATA_DIR, { recursive: true });
       await fs.writeFile(GRAPH_FILE_PATH, data, 'utf-8');
@@ -64,8 +122,24 @@ export class GraphStore {
   async loadGraph(): Promise<void> {
     try {
       const data = await fs.readFile(GRAPH_FILE_PATH, 'utf-8');
-      const serializedGraph = JSON.parse(data);
-      this.graph.import(serializedGraph);
+      const jsonData = JSON.parse(data);
+
+      // Check for new format vs old format for backward compatibility
+      if (jsonData.graph && jsonData.hasOwnProperty('workflowCreationTimes')) {
+        // New format with metadata
+        this.graph.import(jsonData.graph);
+        this.workflowCreationTimes = new Map(
+          Object.entries(jsonData.workflowCreationTimes || {})
+        );
+      } else {
+        // Old format (just the graph object)
+        console.log(
+          '[GraphStore] Loading graph from old format. Timestamps will not be available for existing workflows.'
+        );
+        this.graph.import(jsonData);
+        this.workflowCreationTimes = new Map();
+      }
+
       console.log(`[GraphStore] Graph loaded from ${GRAPH_FILE_PATH}`);
     } catch (error) {
       if (
@@ -161,23 +235,28 @@ export class GraphStore {
       action: string;
       parameters: object;
     }>
-  ): void {
-    const intentNodeId = uuidv4();
+  ): string {
+    const workflowId = uuidv4();
+    const intentNodeId = `${workflowId}_intent`;
+
     this.graph.addNode(intentNodeId, {
       type: 'Intent',
       label: intent,
       vectorId,
+      originalQuery: intent, // Store original query
     });
+    this.workflowCreationTimes.set(workflowId, Date.now());
 
     let previousNodeId = intentNodeId;
     steps.forEach((step, index) => {
-      const stepNodeId = step.id;
+      const stepNodeId = `${workflowId}_${step.action}_${index}`;
       this.graph.addNode(stepNodeId, { ...step });
       this.graph.addDirectedEdge(previousNodeId, stepNodeId, { type: 'Flow' });
       previousNodeId = stepNodeId;
     });
     console.log(`[GraphStore] Created new workflow for intent: ${intent}`);
     this.saveGraph(); // Auto-save after creating a workflow
+    return intentNodeId;
   }
 
   // Helper to find an intent node by its original query

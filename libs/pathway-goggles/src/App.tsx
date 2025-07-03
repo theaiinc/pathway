@@ -12,6 +12,7 @@ import WorkflowDisplay from './components/WorkflowDisplay';
 import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
+import { gsap } from 'gsap';
 
 interface AppProps {
   apiUrl: string;
@@ -189,7 +190,66 @@ const App: React.FC<AppProps> = ({ apiUrl }) => {
   // --- Camera Animation Effect ---
   useEffect(() => {
     if (selectedWorkflowId) {
-      // Logic to animate camera to the selected workflow
+      const workflowNodes = simulationNodesRef.current.filter(
+        n => getWorkflowId(n.id) === selectedWorkflowId
+      );
+
+      if (
+        workflowNodes.length > 0 &&
+        cameraRef.current &&
+        controlsRef3D.current
+      ) {
+        // Calculate the bounding box of the workflow
+        const box = new THREE.Box3();
+        workflowNodes.forEach(node => {
+          if (
+            node.x !== undefined &&
+            node.y !== undefined &&
+            node.z !== undefined
+          ) {
+            box.expandByPoint(new THREE.Vector3(node.x, node.y, node.z));
+          }
+        });
+
+        if (!box.isEmpty()) {
+          const center = new THREE.Vector3();
+          const size = new THREE.Vector3();
+          box.getCenter(center);
+          box.getSize(size);
+
+          const maxDim = Math.max(size.x, size.y, size.z);
+          const fov = cameraRef.current.fov * (Math.PI / 180);
+          let cameraZ = Math.abs((maxDim / 2) * Math.tan(fov * 2));
+          cameraZ *= 2; // Add some padding
+
+          const minZ = 50;
+          cameraZ = Math.max(cameraZ, minZ);
+
+          controlsRef3D.current.enabled = false;
+
+          gsap.to(cameraRef.current.position, {
+            duration: 1.5,
+            x: center.x,
+            y: center.y,
+            z: center.z + cameraZ,
+            ease: 'power2.inOut',
+          });
+
+          gsap.to(controlsRef3D.current.target, {
+            duration: 1.5,
+            x: center.x,
+            y: center.y,
+            z: center.z,
+            ease: 'power2.inOut',
+            onUpdate: () => {
+              controlsRef3D.current?.update();
+            },
+            onComplete: () => {
+              controlsRef3D.current!.enabled = true;
+            },
+          });
+        }
+      }
     }
   }, [selectedWorkflowId]);
 
