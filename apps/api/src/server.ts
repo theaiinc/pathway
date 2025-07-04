@@ -11,6 +11,28 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+const API_KEY = process.env.PATHWAY_API_KEY;
+
+// API Key Authentication Middleware
+const apiKeyAuth = (
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction
+) => {
+  if (!API_KEY) {
+    // If no API key is configured on the server, bypass the check.
+    // This allows for local development without an API key.
+    return next();
+  }
+
+  const providedApiKey = req.header('x-api-key');
+  if (providedApiKey === API_KEY) {
+    next();
+  } else {
+    res.status(401).send('Unauthorized: Invalid API Key');
+  }
+};
+
 const PORT = process.env.PORT || 3001;
 const astraConfig = {
   token: process.env.ASTRA_DB_APPLICATION_TOKEN as string,
@@ -40,7 +62,7 @@ app.get('/graph', (req, res) => {
   res.json(graphData);
 });
 
-app.post('/generate', async (req, res) => {
+app.post('/generate', apiKeyAuth, async (req, res) => {
   const { prompt } = req.body;
   if (!prompt) {
     return res.status(400).send('Prompt is required');
@@ -94,7 +116,7 @@ app.post('/generate', async (req, res) => {
   }
 });
 
-app.post('/reset', async (req, res) => {
+app.post('/reset', apiKeyAuth, async (req, res) => {
   try {
     await graphStore.clearGraph();
     await vectorStore.clearCollection();
@@ -106,7 +128,7 @@ app.post('/reset', async (req, res) => {
   }
 });
 
-app.delete('/workflow/:workflowId', async (req, res) => {
+app.delete('/workflow/:workflowId', apiKeyAuth, async (req, res) => {
   const { workflowId } = req.params;
   if (!workflowId) {
     return res.status(400).send('Workflow ID is required');
