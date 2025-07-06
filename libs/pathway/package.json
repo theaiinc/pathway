@@ -1,6 +1,6 @@
 {
   "name": "@theaiinc/pathway",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "type": "commonjs",
   "scripts": {
     "publish": "node scripts/publish.js"
