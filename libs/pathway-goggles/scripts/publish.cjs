@@ -12,7 +12,7 @@ console.log('Starting publish process for @theaiinc/pathway-goggles...');
 console.log('Building the library...');
 execSync('nx build pathway-goggles', { cwd: root, stdio: 'inherit' });
 
-// 2. Prepare and copy package.json to the dist folder
+// 2. Prepare and copy package.json and README to the dist folder
 const packageJsonPath = path.join(libRoot, 'package.json');
 const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
 
@@ -24,6 +24,16 @@ fs.writeFileSync(
   JSON.stringify(packageJson, null, 2)
 );
 console.log('Copied and prepared package.json in dist folder.');
+
+// Copy README file
+const readmePath = path.join(libRoot, 'README.md');
+const readmeDestPath = path.join(distRoot, 'README.md');
+if (fs.existsSync(readmePath)) {
+  fs.copyFileSync(readmePath, readmeDestPath);
+  console.log('Copied README.md to dist folder.');
+} else {
+  console.warn('README.md not found in lib root.');
+}
 
 // 3. Publish to npm
 console.log('Publishing to npm...');
