@@ -2,6 +2,7 @@
   "name": "@theaiinc/pathway",
   "version": "0.0.3",
   "type": "commonjs",
+  "license": "UNLICENSED",
   "scripts": {
     "publish": "node scripts/publish.js"
   }

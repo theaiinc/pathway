@@ -3,6 +3,7 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "sourceRoot": "libs/pathway-goggles/src",
   "projectType": "library",
+  "license": "UNLICENSED",
   "targets": {
     "build": {
       "executor": "@nx/vite:build",
