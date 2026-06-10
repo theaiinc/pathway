@@ -4,6 +4,8 @@
   "type": "commonjs",
   "license": "UNLICENSED",
   "scripts": {
-    "publish": "node scripts/publish.js"
+    "publish": "node scripts/publish.js",
+    "demo:peal": "tsc -p tsconfig.peal-demo.json && node ./.peal-build/scripts/peal-demo.js",
+    "demo:peal:ollama": "tsc -p tsconfig.peal-demo.json && node ./.peal-build/scripts/peal-demo-ollama.js"
   }
 }

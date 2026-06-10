@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "es2022",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "outDir": "./.peal-build",
+    "rootDir": "."
+  },
+  "include": [
+    "src/cas/**/*.ts",
+    "src/cache/**/*.ts",
+    "src/provenance/**/*.ts",
+    "scripts/peal-demo.ts",
+    "scripts/peal-demo-ollama.ts"
+  ]
+}
