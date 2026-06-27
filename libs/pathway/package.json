@@ -2,7 +2,7 @@
   "name": "@theaiinc/pathway",
   "version": "0.0.4",
   "type": "commonjs",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "scripts": {
     "publish": "node scripts/publish.js",
     "demo:peal": "tsc -p tsconfig.peal-demo.json && node ./.peal-build/scripts/peal-demo.js",

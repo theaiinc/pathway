@@ -451,11 +451,7 @@ context compilation, audit findings, candidate knowledge validation, and replay.
 
 ## 📄 License
 
-**The AI INC @ 2025** - All rights reserved.
-
-This software is proprietary and confidential. While it is provided free of charge, usage is subject to subscription plans and terms of service. Redistribution, modification, or commercial use without proper licensing is prohibited.
-
-For licensing inquiries, please contact The AI INC.
+MIT
 
 ## 🔗 Related Projects
 
