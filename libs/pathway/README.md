@@ -1,28 +1,61 @@
 # @theaiinc/pathway
 
-A sophisticated Case-Based Reasoning (CBR) system that enables AI agents to learn, retrieve, and reuse workflows based on user intent. This library implements a vectorized intent representation system with graph-based workflow management, allowing agents to build persistent knowledge and solve problems more efficiently over time.
+Pathway is an additive reasoning runtime for autonomous agents. It preserves the original
+Case-Based Reasoning (CBR) workflow engine while adding the first PEAL runtime spine:
+immutable knowledge, deterministic context compilation, typed execution traces,
+simulation/audit hooks, skeptical learning, and cache/provenance foundations.
 
 ## 🎯 Overview
 
-The `pathway` library implements a **dynamic mind map** system where:
+The `pathway` library now has two compatible layers:
 
-- **Intentions** (user problems) are converted to vector embeddings for semantic similarity search
-- **Workflows** (solution paths) are stored as interconnected graphs
-- **Case-Based Reasoning** enables learning from past solutions
-- **Persistent storage** maintains knowledge across sessions
+- **CBR workflow engine**: intentions are embedded, similar workflows are retrieved, and workflows are stored in a graph.
+- **PEAL runtime spine**: providers collect typed knowledge, selectors build snapshots, the Context Compiler emits typed context targets, planners produce execution plans, and execution traces flow through audit, learning, validation, and replay.
 
 ## 🏗️ Architecture
+
+### PEAL Runtime Spine
+
+```text
+Execution Runtime
+  -> Knowledge Runtime
+  -> Selection Engine
+  -> Context IR
+  -> Context Compiler
+  -> PlannerContext
+  -> Planner / LLM
+  -> ExecutionPlan
+  -> Simulation / Execution
+  -> Audit
+  -> Candidate Knowledge
+  -> Validation
+  -> Knowledge Graph
+```
+
+PEAL is governed by normative specs in `spec/`:
+
+- `runtime-laws.md`
+- `compiler-invariants.md`
+- `knowledge-model.md`
+- `execution-model.md`
+- `replay-model.md`
+
+The core laws are: durable knowledge is immutable, context compilation is pure, subsystem boundaries stay separate, durable knowledge requires evidence, learning is skeptical, replay inputs are versioned, and optimization must preserve semantics.
 
 ### Core Components
 
 #### 1. **PathwayManager** (`pathway-manager.ts`)
 
-The central orchestrator that implements the CBR cycle:
+The original orchestrator that implements the CBR cycle:
 
 - **Retrieve**: Find similar past workflows using vector similarity
 - **Reuse**: Adapt existing workflows to new problems
 - **Revise**: Execute and refine workflows based on results
 - **Retain**: Store successful workflows for future use
+
+`PathwayManager` remains backward compatible. It can optionally receive an
+`ExecutionRuntime` to cache expensive workflow generation via PEAL's content-addressed
+execution cache.
 
 #### 2. **VectorStore** (`vector-store.ts`)
 
@@ -45,6 +78,24 @@ Manages workflow graphs using Graphology:
 #### 4. **WorkflowExecutor** (`workflow-executor.ts`)
 
 Executes workflow steps and manages execution state.
+
+#### 5. **Context Compiler** (`context/`, `compiler/`)
+
+Builds and optimizes ephemeral `ContextIR` from selected knowledge snapshots. The compiler
+is pure: it emits typed context targets such as `PlannerContext`; it does not plan,
+execute, call tools, or mutate durable knowledge.
+
+#### 6. **Knowledge and Selection** (`knowledge/`, `selection/`)
+
+Providers collect typed knowledge into an immutable in-memory `KnowledgeGraph`.
+Selectors choose the part of the graph to compile into a `ContextSnapshot`.
+
+#### 7. **Execution, Audit, Learning, Replay**
+
+`ExecutionTrace` is the shared format for simulation and real execution. Audit engines
+evaluate traces and produce findings. Learning turns findings into `CandidateKnowledge`,
+and validation gates durable writes. Replay records capture versioned inputs for
+deterministic regression checks.
 
 ## 🚀 Quick Start
 
@@ -91,6 +142,51 @@ if (workflow) {
     await pathwayManager.retainWorkflow(newWorkflow, query);
   }
 }
+```
+
+### PEAL Runtime Usage
+
+```typescript
+import {
+  BudgetPass,
+  ContextCompiler,
+  DefaultCostModel,
+  ExecutionRuntime,
+  GreedySelector,
+  IdentityAnalysisPass,
+  KnowledgeRuntime,
+  PlannerContextEmitter,
+  SelectionEngine,
+} from '@theaiinc/pathway';
+
+const objective = {
+  version: 'objective-v1',
+  maxTokens: 4000,
+  prioritize: ['execution', 'failures', 'artifacts'],
+};
+
+const costModel = new DefaultCostModel();
+const compiler = new ContextCompiler([
+  new IdentityAnalysisPass(),
+  new BudgetPass(costModel, objective),
+]);
+
+const runtime = new ExecutionRuntime({
+  knowledgeRuntime: new KnowledgeRuntime(),
+  selectionEngine: new SelectionEngine(new GreedySelector()),
+  compiler,
+});
+
+const result = await runtime.compileContext({
+  providerRequest: { objective, target: 'planner' },
+  selectionRequest: { id: 'task-context', objective, target: 'planner' },
+  compilerVersion: '1.0.0',
+  passSetVersion: 'identity-analysis@1.0.0|budget@1.0.0',
+  costModel,
+  emitter: new PlannerContextEmitter(),
+});
+
+const plannerContext = result.output;
 ```
 
 ## 📊 Data Models
@@ -141,7 +237,9 @@ Stores a new workflow in the knowledge base for future reuse.
 
 #### `generateNewWorkflow(query: string): Promise<MultiGraph | null>`
 
-Generates a completely new workflow using LLM planning.
+Generates a completely new workflow using LLM planning. If `PathwayManager` is
+constructed with an `ExecutionRuntime`, this call is cached through PEAL's
+content-addressed `ExecutionCache`.
 
 #### `executeAndReviseWorkflow(workflow: MultiGraph): Promise<boolean>`
 
@@ -174,6 +272,33 @@ Extracts a workflow subgraph starting from an intent node.
 #### `findIntentNodeByVectorId(vectorId: string): string | null`
 
 Finds an intent node by its associated vector ID.
+
+### PEAL Runtime APIs
+
+#### `ExecutionRuntime`
+
+Coordinates context compilation by composing `KnowledgeRuntime`, `SelectionEngine`,
+`ContextCompiler`, `ExecutionCache`, `ProvenanceGraph`, and the event bus.
+
+#### `ContextCompiler`
+
+Runs deterministic pass pipelines over `ContextIR` and emits typed context targets. The
+compiler is intentionally pure and does not create execution plans.
+
+#### `KnowledgeRuntime`
+
+Registers providers, ingests typed provider results, and owns the in-memory
+`KnowledgeGraph`.
+
+#### `SelectionEngine`
+
+Uses a `ContextSelector` such as `GreedySelector` to produce a `ContextSnapshot`, then
+builds a `ContextIR` for the compiler.
+
+#### `AuditEngine`, `LearningEngine`, `ValidationEngine`
+
+Provide the closed-loop audit path: traces become findings, findings become candidate
+knowledge, and validation gates durable knowledge writes.
 
 ## 🎨 Workflow Generation
 
@@ -293,6 +418,15 @@ npm test
 ```bash
 npm run publish
 ```
+
+### PEAL Demo
+
+```bash
+npm run demo:peal
+```
+
+The demo validates content-addressed hashing, execution caching, provenance invalidation,
+context compilation, audit findings, candidate knowledge validation, and replay.
 
 ## 📈 Performance Considerations
 
