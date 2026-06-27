@@ -13,6 +13,16 @@
     "src/cas/**/*.ts",
     "src/cache/**/*.ts",
     "src/provenance/**/*.ts",
+    "src/context/**/*.ts",
+    "src/compiler/**/*.ts",
+    "src/knowledge/**/*.ts",
+    "src/selection/**/*.ts",
+    "src/execution/**/*.ts",
+    "src/planning/**/*.ts",
+    "src/simulation/**/*.ts",
+    "src/audit/**/*.ts",
+    "src/learning/**/*.ts",
+    "src/replay/**/*.ts",
     "scripts/peal-demo.ts",
     "scripts/peal-demo-ollama.ts"
   ]

@@ -1,0 +1,13 @@
+{
+  "name": "oauth-planner-context",
+  "knowledgeSnapshotVersion": "2:1",
+  "objectiveVersion": "objective-v1",
+  "selectorVersion": "1.0.0",
+  "compilerVersion": "1.0.0",
+  "passSetVersion": "identity-analysis@1.0.0|budget@1.0.0",
+  "costModelVersion": "1.0.0",
+  "emitterVersion": "1.0.0",
+  "plannerVersion": "demo-planner@1.0.0",
+  "expectedTargetKind": "planner",
+  "expectedNodeIds": ["constraint:oauth", "failure:oauth-android"]
+}

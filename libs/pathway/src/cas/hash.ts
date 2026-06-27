@@ -5,7 +5,8 @@ export type Hash = string; // "sha256:" + hex
 /**
  * Deterministic, key-sorted JSON serialization so that logically-equal objects
  * serialize identically regardless of key insertion order. This canonical form
- * is the spine of content addressing — see PEAL-architecture.md §4.1.
+ * is the spine of content addressing — see spec/runtime-laws.md and
+ * spec/knowledge-model.md.
  *
  * Rules (pinned so hashes are stable across runs/machines):
  * - Object keys are emitted in sorted order, recursively.

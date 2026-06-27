@@ -3,6 +3,8 @@ import { GraphStore } from './graph-store.js';
 import { v4 as uuidv4 } from 'uuid';
 import { MultiGraph } from 'graphology';
 import { WorkflowExecutor } from './workflow-executor.js';
+import { ExecutionRuntime } from './execution/execution-runtime.js';
+import { generateWorkflowWithCache } from './cache/workflow-generation-cache.js';
 
 const azureOpenAIApiKey = process.env.AZURE_OPENAI_API_KEY;
 const azureOpenAIApiEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
@@ -24,10 +26,16 @@ if (
 export class PathwayManager {
   private vectorStore: VectorStore;
   private graphStore: GraphStore;
+  private runtime?: ExecutionRuntime;
 
-  constructor(vectorStore: VectorStore, graphStore: GraphStore) {
+  constructor(
+    vectorStore: VectorStore,
+    graphStore: GraphStore,
+    runtime?: ExecutionRuntime
+  ) {
     this.vectorStore = vectorStore;
     this.graphStore = graphStore;
+    this.runtime = runtime;
   }
 
   /**
@@ -304,7 +312,9 @@ export class PathwayManager {
   async generateNewWorkflow(query: string): Promise<MultiGraph | null> {
     console.log(`\n[Manager] Generating new workflow for query: "${query}"`);
 
-    const llmResponse = await this.vectorStore.generateWorkflow(query);
+    const llmResponse = this.runtime
+      ? await generateWorkflowWithCache(this.vectorStore, this.runtime, query)
+      : await this.vectorStore.generateWorkflow(query);
 
     if (!llmResponse) {
       console.error('[Manager] Failed to get a response from the LLM.');
