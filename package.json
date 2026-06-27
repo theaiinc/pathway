@@ -27,13 +27,15 @@
     "graphology-traversal": "^0.3.1",
     "openai": "^4.15.3",
     "tsconfig-paths": "^4.2.0",
-    "uuid": "^10.0.0"
+    "uuid": "^14.0.1",
+    "vitest": "4.1.9"
   },
   "devDependencies": {
-    "@nx/vite": "^21.2.1",
+    "@nx/js": "^23.0.1",
+    "@nx/vite": "^23.0.1",
     "@types/node": "^20.14.2",
     "@types/uuid": "^9.0.8",
-    "nx": "^19.3.1",
+    "nx": "^23.0.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.5"
   },
