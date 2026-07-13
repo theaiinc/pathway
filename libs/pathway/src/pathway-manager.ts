@@ -6,22 +6,42 @@ import { WorkflowExecutor } from './workflow-executor.js';
 import { ExecutionRuntime } from './execution/execution-runtime.js';
 import { generateWorkflowWithCache } from './cache/workflow-generation-cache.js';
 
-const azureOpenAIApiKey = process.env.AZURE_OPENAI_API_KEY;
-const azureOpenAIApiEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
-const azureOpenAIApiVersion = process.env.AZURE_OPENAI_API_VERSION;
-const azureOpenAIChatDeploymentName =
-  process.env.AZURE_OPENAI_CHAT_DEPLOYMENT_NAME;
-
-if (
-  !azureOpenAIApiKey ||
-  !azureOpenAIApiEndpoint ||
-  !azureOpenAIApiVersion ||
-  !azureOpenAIChatDeploymentName
-) {
-  throw new Error(
-    'Azure OpenAI environment variables for chat are not set. Please check your .env file.'
-  );
+export interface RetrievalAuditOptions {
+  readonly k?: number;
+  readonly similarityThreshold?: number;
+  readonly complexityPenaltyPerNode?: number;
+  readonly workflowEdgeTypes?: readonly string[];
 }
+
+export interface RetrievalCandidateAudit {
+  readonly rank: number;
+  readonly vectorId: string;
+  readonly distance?: number;
+  readonly similarity?: number;
+  readonly score?: number;
+  readonly intentNodeId?: string;
+  readonly workflowNodeCount?: number;
+  readonly rejectionReason?: string;
+}
+
+export interface RetrievalAuditResult {
+  readonly query: string;
+  readonly k: number;
+  readonly similarityThreshold: number;
+  readonly complexityPenaltyPerNode: number;
+  readonly candidates: readonly RetrievalCandidateAudit[];
+  readonly selectedCandidate?: RetrievalCandidateAudit;
+  readonly selectedWorkflow: MultiGraph | null;
+  readonly rejectionReason?: string;
+  readonly durationMs: number;
+}
+
+export const DEFAULT_RETRIEVAL_AUDIT_OPTIONS = {
+  k: 3,
+  similarityThreshold: 0.75,
+  complexityPenaltyPerNode: 0.05,
+  workflowEdgeTypes: ['Flow', 'HAS_STEP', 'DEPENDS_ON', 'LEADS_TO'] as const,
+};
 
 export class PathwayManager {
   private vectorStore: VectorStore;
@@ -45,9 +65,34 @@ export class PathwayManager {
    * @returns A workflow subgraph or null if not found.
    */
   async findSimilarWorkflow(query: string): Promise<MultiGraph | null> {
+    const audit = await this.auditSimilarWorkflow(query);
+    return audit.selectedWorkflow;
+  }
+
+  /**
+   * Audits workflow retrieval while preserving the existing retrieval behavior.
+   * Benchmarks consume this passive result instead of changing runtime code paths.
+   * @param query The user's query.
+   * @param options Retrieval scoring and traversal options.
+   * @returns Candidate diagnostics and the selected workflow, if any.
+   */
+  async auditSimilarWorkflow(
+    query: string,
+    options: RetrievalAuditOptions = {}
+  ): Promise<RetrievalAuditResult> {
+    const startedAt = Date.now();
     console.log(`\n[Manager] Retrieving similar workflow for: "${query}"`);
 
-    const k = 3; // Retrieve top 3 candidates
+    const k = options.k ?? DEFAULT_RETRIEVAL_AUDIT_OPTIONS.k;
+    const similarityThreshold =
+      options.similarityThreshold ??
+      DEFAULT_RETRIEVAL_AUDIT_OPTIONS.similarityThreshold;
+    const complexityPenaltyPerNode =
+      options.complexityPenaltyPerNode ??
+      DEFAULT_RETRIEVAL_AUDIT_OPTIONS.complexityPenaltyPerNode;
+    const workflowEdgeTypes =
+      options.workflowEdgeTypes ??
+      DEFAULT_RETRIEVAL_AUDIT_OPTIONS.workflowEdgeTypes;
     const similarIntentions = await this.vectorStore.findSimilarIntentions(
       query,
       k
@@ -55,12 +100,23 @@ export class PathwayManager {
 
     if (!similarIntentions || similarIntentions.ids.length === 0) {
       console.log('[Manager] No similar intentions found in VectorStore.');
-      return null;
+      return {
+        query,
+        k,
+        similarityThreshold,
+        complexityPenaltyPerNode,
+        candidates: [],
+        selectedWorkflow: null,
+        rejectionReason: 'no-candidates',
+        durationMs: Date.now() - startedAt,
+      };
     }
 
     // Score and rank the candidates
     let bestWorkflow: MultiGraph | null = null;
+    let bestCandidate: RetrievalCandidateAudit | undefined;
     let bestScore = -Infinity;
+    const candidates: RetrievalCandidateAudit[] = [];
 
     console.log(
       `[Manager] Scoring ${similarIntentions.ids.length} candidates...`
@@ -68,6 +124,15 @@ export class PathwayManager {
     for (let i = 0; i < similarIntentions.ids.length; i++) {
       const vectorId = similarIntentions.ids[i];
       const distance = similarIntentions.distances[i];
+      if (!Number.isFinite(distance)) {
+        candidates.push({
+          rank: i + 1,
+          vectorId,
+          rejectionReason: 'invalid-distance',
+        });
+        continue;
+      }
+
       const similarity = 1 - distance;
 
       console.log(
@@ -77,8 +142,24 @@ export class PathwayManager {
 
       if (intentNode) {
         console.log(`[Manager]   ... found intent node: ${intentNode}`);
-        const workflow = this.graphStore.getWorkflowByIntentNode(intentNode);
-        const score = this.scoreWorkflow(workflow, similarity);
+        const workflow = this.graphStore.getWorkflowByIntentNode(intentNode, {
+          edgeTypes: workflowEdgeTypes,
+        });
+        const score = this.scoreWorkflow(
+          workflow,
+          similarity,
+          complexityPenaltyPerNode
+        );
+        const candidate: RetrievalCandidateAudit = {
+          rank: i + 1,
+          vectorId,
+          distance,
+          similarity,
+          score,
+          intentNodeId: intentNode,
+          workflowNodeCount: workflow.order,
+        };
+        candidates.push(candidate);
         console.log(
           `[Manager] -> Candidate ${i + 1}: score=${score.toFixed(
             4
@@ -90,20 +171,42 @@ export class PathwayManager {
         if (score > bestScore) {
           bestScore = score;
           bestWorkflow = workflow;
+          bestCandidate = candidate;
         }
       } else {
+        candidates.push({
+          rank: i + 1,
+          vectorId,
+          distance,
+          similarity,
+          rejectionReason: 'stale-vector-id',
+        });
         console.log(
           `[Manager]   ... could not find an intent node for this vectorId.`
         );
       }
     }
 
-    const similarityThreshold = 0.75;
-    if (bestWorkflow && bestScore >= similarityThreshold) {
+    // Complexity is a ranking signal, not evidence that the semantic match is
+    // invalid. Gate retrieval on the raw embedding similarity so large,
+    // high-confidence workflows are not rejected solely for having more steps.
+    const bestSimilarity = bestCandidate?.similarity ?? -Infinity;
+    if (bestWorkflow && bestSimilarity >= similarityThreshold) {
       console.log(
-        `[Manager] Selecting best workflow with score: ${bestScore.toFixed(4)}`
+        `[Manager] Selecting best workflow with score: ${bestScore.toFixed(
+          4
+        )} and similarity: ${bestSimilarity.toFixed(4)}`
       );
-      return bestWorkflow;
+      return {
+        query,
+        k,
+        similarityThreshold,
+        complexityPenaltyPerNode,
+        candidates,
+        selectedCandidate: bestCandidate,
+        selectedWorkflow: bestWorkflow,
+        durationMs: Date.now() - startedAt,
+      };
     } else {
       if (bestWorkflow) {
         console.log(
@@ -112,7 +215,17 @@ export class PathwayManager {
           )}) is below threshold of ${similarityThreshold}. No suitable workflow found.`
         );
       }
-      return null;
+      return {
+        query,
+        k,
+        similarityThreshold,
+        complexityPenaltyPerNode,
+        candidates,
+        selectedCandidate: bestCandidate,
+        selectedWorkflow: null,
+        rejectionReason: bestWorkflow ? 'below-threshold' : 'no-valid-candidates',
+        durationMs: Date.now() - startedAt,
+      };
     }
   }
 
@@ -298,9 +411,13 @@ export class PathwayManager {
     console.log(`[Manager] Successfully deleted workflow ${workflowId}.`);
   }
 
-  private scoreWorkflow(workflow: MultiGraph, similarity: number): number {
+  private scoreWorkflow(
+    workflow: MultiGraph,
+    similarity: number,
+    complexityPenaltyPerNode: number
+  ): number {
     const complexity = workflow.order; // Number of nodes
-    const complexityPenalty = 0.05 * complexity; // Penalize by 0.05 for each node
+    const complexityPenalty = complexityPenaltyPerNode * complexity;
 
     // The final score is the similarity minus a penalty for complexity.
     // This favors simpler workflows, especially when similarity scores are close.
@@ -311,6 +428,7 @@ export class PathwayManager {
 
   async generateNewWorkflow(query: string): Promise<MultiGraph | null> {
     console.log(`\n[Manager] Generating new workflow for query: "${query}"`);
+    this.assertChatEnvironment();
 
     const llmResponse = this.runtime
       ? await generateWorkflowWithCache(this.vectorStore, this.runtime, query)
@@ -378,5 +496,23 @@ export class PathwayManager {
     }
 
     return successful;
+  }
+
+  private assertChatEnvironment(): void {
+    const required = [
+      'AZURE_OPENAI_API_KEY',
+      'AZURE_OPENAI_ENDPOINT',
+      'AZURE_OPENAI_API_VERSION',
+      'AZURE_OPENAI_CHAT_DEPLOYMENT_NAME',
+    ];
+    const missing = required.filter(name => !process.env[name]);
+
+    if (missing.length > 0) {
+      throw new Error(
+        `Azure OpenAI environment variables for chat are not set: ${missing.join(
+          ', '
+        )}. Please check your .env file.`
+      );
+    }
   }
 }

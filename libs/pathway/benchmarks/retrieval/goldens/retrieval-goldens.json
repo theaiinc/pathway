@@ -1,0 +1,257 @@
+{
+  "id": "peal-retrieval-v1",
+  "version": "1.0.0",
+  "workflows": [
+    {
+      "id": "workflow-read-file",
+      "intentNodeId": "workflow-read-file_intent",
+      "vectorId": "vector-read-file",
+      "intent": "Read a file in Node.js",
+      "steps": [
+        {
+          "id": "workflow-read-file_step_1",
+          "label": "Import fs",
+          "action": "import_module",
+          "parameters": {
+            "module": "fs/promises"
+          }
+        },
+        {
+          "id": "workflow-read-file_step_2",
+          "label": "Read file contents",
+          "action": "read_file",
+          "parameters": {
+            "path": "input.txt"
+          }
+        }
+      ]
+    },
+    {
+      "id": "workflow-oauth-debug",
+      "intentNodeId": "workflow-oauth-debug_intent",
+      "vectorId": "vector-oauth-debug",
+      "intent": "Debug OAuth redirect configuration",
+      "steps": [
+        {
+          "id": "workflow-oauth-debug_step_1",
+          "label": "Inspect callback URL",
+          "action": "inspect_config",
+          "parameters": {
+            "field": "redirectUri"
+          }
+        },
+        {
+          "id": "workflow-oauth-debug_step_2",
+          "label": "Compare provider settings",
+          "action": "compare_config",
+          "parameters": {
+            "provider": "oauth"
+          }
+        },
+        {
+          "id": "workflow-oauth-debug_step_3",
+          "label": "Validate manifest intent filter",
+          "action": "inspect_artifact",
+          "parameters": {
+            "path": "AndroidManifest.xml"
+          }
+        }
+      ]
+    },
+    {
+      "id": "workflow-write-tests",
+      "intentNodeId": "workflow-write-tests_intent",
+      "vectorId": "vector-write-tests",
+      "intent": "Write unit tests for a TypeScript function",
+      "steps": [
+        {
+          "id": "workflow-write-tests_step_1",
+          "label": "Identify behavior",
+          "action": "inspect_code",
+          "parameters": {
+            "target": "function"
+          }
+        },
+        {
+          "id": "workflow-write-tests_step_2",
+          "label": "Create Vitest cases",
+          "action": "write_test",
+          "parameters": {
+            "runner": "vitest"
+          }
+        }
+      ]
+    },
+    {
+      "id": "workflow-large-perfect",
+      "intentNodeId": "workflow-large-perfect_intent",
+      "vectorId": "vector-large-perfect",
+      "intent": "Generate a long multi-step migration workflow",
+      "steps": [
+        {
+          "id": "workflow-large-perfect_step_1",
+          "label": "Step 1",
+          "action": "step",
+          "parameters": {
+            "index": 1
+          }
+        },
+        {
+          "id": "workflow-large-perfect_step_2",
+          "label": "Step 2",
+          "action": "step",
+          "parameters": {
+            "index": 2
+          }
+        },
+        {
+          "id": "workflow-large-perfect_step_3",
+          "label": "Step 3",
+          "action": "step",
+          "parameters": {
+            "index": 3
+          }
+        },
+        {
+          "id": "workflow-large-perfect_step_4",
+          "label": "Step 4",
+          "action": "step",
+          "parameters": {
+            "index": 4
+          }
+        },
+        {
+          "id": "workflow-large-perfect_step_5",
+          "label": "Step 5",
+          "action": "step",
+          "parameters": {
+            "index": 5
+          }
+        },
+        {
+          "id": "workflow-large-perfect_step_6",
+          "label": "Step 6",
+          "action": "step",
+          "parameters": {
+            "index": 6
+          }
+        }
+      ]
+    }
+  ],
+  "similarityEdges": [
+    {
+      "source": "workflow-oauth-debug_intent",
+      "target": "workflow-write-tests_intent"
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "canonical-read-file",
+      "query": "Read a file in Node.js",
+      "vectorResults": [
+        {
+          "vectorId": "vector-read-file",
+          "distance": 0.03
+        },
+        {
+          "vectorId": "vector-write-tests",
+          "distance": 0.31
+        }
+      ]
+    },
+    {
+      "id": "paraphrase-oauth",
+      "query": "Fix my OAuth callback URL mismatch",
+      "vectorResults": [
+        {
+          "vectorId": "vector-oauth-debug",
+          "distance": 0.04
+        },
+        {
+          "vectorId": "vector-write-tests",
+          "distance": 0.37
+        }
+      ]
+    },
+    {
+      "id": "near-miss-tests",
+      "query": "Add tests around this TypeScript utility",
+      "vectorResults": [
+        {
+          "vectorId": "vector-write-tests",
+          "distance": 0.08
+        },
+        {
+          "vectorId": "vector-read-file",
+          "distance": 0.28
+        }
+      ]
+    },
+    {
+      "id": "negative-deploy",
+      "query": "Deploy this service to Kubernetes",
+      "vectorResults": [
+        {
+          "vectorId": "vector-oauth-debug",
+          "distance": 0.62
+        },
+        {
+          "vectorId": "vector-write-tests",
+          "distance": 0.68
+        }
+      ]
+    },
+    {
+      "id": "large-perfect-diagnostic",
+      "query": "Generate a long multi-step migration workflow",
+      "vectorResults": [
+        {
+          "vectorId": "vector-large-perfect",
+          "distance": 0
+        }
+      ]
+    },
+    {
+      "id": "stale-vector",
+      "query": "Retrieve a workflow whose vector has drifted",
+      "vectorResults": [
+        {
+          "vectorId": "vector-missing-from-graph",
+          "distance": 0.02
+        }
+      ]
+    }
+  ],
+  "expected": [
+    {
+      "id": "canonical-read-file",
+      "shouldRetrieve": true,
+      "expectedIntentNodeId": "workflow-read-file_intent"
+    },
+    {
+      "id": "paraphrase-oauth",
+      "shouldRetrieve": true,
+      "expectedIntentNodeId": "workflow-oauth-debug_intent"
+    },
+    {
+      "id": "near-miss-tests",
+      "shouldRetrieve": true,
+      "expectedIntentNodeId": "workflow-write-tests_intent"
+    },
+    {
+      "id": "negative-deploy",
+      "shouldRetrieve": false
+    },
+    {
+      "id": "large-perfect-diagnostic",
+      "shouldRetrieve": true,
+      "expectedIntentNodeId": "workflow-large-perfect_intent"
+    },
+    {
+      "id": "stale-vector",
+      "shouldRetrieve": false,
+      "expectedRejectionReason": "no-valid-candidates"
+    }
+  ]
+}

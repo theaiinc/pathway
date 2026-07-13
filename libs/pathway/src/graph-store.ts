@@ -11,7 +11,7 @@ const GRAPH_FILE_PATH = path.join(GRAPH_DATA_DIR, 'workflow-graph.json');
 // --- Graph Schema Definitions ---
 
 export type NodeType = 'Intent' | 'Step' | 'SubTask' | 'Decision';
-export type EdgeType = 'HAS_STEP' | 'DEPENDS_ON' | 'LEADS_TO';
+export type EdgeType = 'HAS_STEP' | 'DEPENDS_ON' | 'LEADS_TO' | 'Flow' | 'Similarity';
 
 export interface BaseNode {
   id: string;
@@ -213,15 +213,36 @@ export class GraphStore {
     );
   }
 
-  getWorkflowByIntentNode(startNodeId: string): MultiGraph {
+  getWorkflowByIntentNode(
+    startNodeId: string,
+    options: { edgeTypes?: readonly string[] } = {}
+  ): MultiGraph {
     const nodesInWorkflow: string[] = [];
-    bfsFromNode(
-      this.graph,
-      startNodeId,
-      (node: string, attributes: any, depth: number) => {
-        nodesInWorkflow.push(node);
+    const allowedEdgeTypes = options.edgeTypes
+      ? new Set(options.edgeTypes)
+      : undefined;
+    const queue = [startNodeId];
+    const visited = new Set<string>();
+
+    while (queue.length > 0) {
+      const node = queue.shift()!;
+      if (visited.has(node)) continue;
+      visited.add(node);
+      nodesInWorkflow.push(node);
+
+      for (const edge of this.graph.outEdges(node)) {
+        const edgeType = this.graph.getEdgeAttribute(edge, 'type');
+        if (allowedEdgeTypes && !allowedEdgeTypes.has(edgeType)) {
+          continue;
+        }
+
+        const target = this.graph.target(edge);
+        if (!visited.has(target)) {
+          queue.push(target);
+        }
       }
-    );
+    }
+
     return subgraph(this.graph, nodesInWorkflow);
   }
 

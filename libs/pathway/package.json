@@ -5,6 +5,10 @@
   "license": "MIT",
   "scripts": {
     "publish": "node scripts/publish.js",
+    "test": "vitest run --config vitest.config.ts",
+    "benchmark:ci": "tsc -p tsconfig.benchmark.json && node ./.benchmark-build/scripts/peal-benchmark.js benchmark --profile ci",
+    "benchmark:nightly": "tsc -p tsconfig.benchmark.json && node ./.benchmark-build/scripts/peal-benchmark.js benchmark --profile nightly",
+    "benchmark:retrieval:live": "tsc -p tsconfig.benchmark.json && node ./.benchmark-build/scripts/peal-benchmark.js benchmark --profile nightly --subsystem retrieval --live",
     "demo:peal": "tsc -p tsconfig.peal-demo.json && node ./.peal-build/scripts/peal-demo.js",
     "demo:peal:ollama": "tsc -p tsconfig.peal-demo.json && node ./.peal-build/scripts/peal-demo-ollama.js"
   }
