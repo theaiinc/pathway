@@ -1,0 +1,96 @@
+name: Publish @theaiinc/pathway
+
+# Publishing a GitHub release tagged v<semver> (or pathway-v<semver>) builds,
+# tests and publishes libs/pathway to npm. No npm token: the job trades its
+# GitHub OIDC identity for a short-lived publish token through npm's trusted
+# publisher, the same flow as theaiinc/yggdrasil and theaiinc/aegis-sdk.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-pathway
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    environment: release
+    if: >-
+      startsWith(github.event.release.tag_name, 'v') ||
+      startsWith(github.event.release.tag_name, 'pathway-v')
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.target_commitish }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Resolve version
+        id: version
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          VERSION="${TAG#pathway-v}"
+          VERSION="${VERSION#v}"
+
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
+            echo "Invalid semver: $VERSION (from tag: $TAG)"
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Publishing @theaiinc/pathway@$VERSION"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set package version
+        working-directory: libs/pathway
+        run: npm version "${{ steps.version.outputs.version }}" --no-git-tag-version --allow-same-version
+
+      - name: Test
+        working-directory: libs/pathway
+        run: npm test
+
+      - name: Deterministic benchmarks
+        working-directory: libs/pathway
+        run: npm run benchmark:ci -- --subsystem skills
+
+      - name: Build
+        run: |
+          npx nx build pathway-lib --skip-nx-cache
+          # The published manifest carries no scripts: they only make sense in the repo.
+          node -e "const f='dist/libs/pathway/package.json'; const p=require('./'+f); delete p.scripts; require('fs').writeFileSync(f, JSON.stringify(p, null, 2) + '\n')"
+
+      - name: Get GitHub OIDC id_token
+        run: |
+          JWT=$(curl -sSL \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm:registry.npmjs.org" \
+            | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).value")
+          echo -n "$JWT" > /tmp/oidc-jwt.txt
+
+      - name: Publish @theaiinc/pathway
+        run: |
+          JWT=$(cat /tmp/oidc-jwt.txt)
+          RESPONSE=$(curl -sS -X POST \
+            "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/@theaiinc%2fpathway" \
+            -H "Authorization: Bearer $JWT")
+          TOKEN=$(echo "$RESPONSE" | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).token || ''")
+          if [ -z "$TOKEN" ]; then
+            echo "npm did not issue a token. Is theaiinc/pathway (publish.yml, environment release) a trusted publisher for @theaiinc/pathway on npmjs.com?"
+            echo "$RESPONSE" | node -p "const r=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')); delete r.token; JSON.stringify(r)"
+            exit 1
+          fi
+          echo "::add-mask::$TOKEN"
+          echo "//registry.npmjs.org/:_authToken=$TOKEN" > ~/.npmrc
+          cd dist/libs/pathway && npm publish --access public
