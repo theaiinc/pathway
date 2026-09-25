@@ -22,6 +22,13 @@
     },
     "./package.json": "./package.json"
   },
+  "typesVersions": {
+    "*": {
+      "skills": [
+        "./src/skills/index.d.ts"
+      ]
+    }
+  },
   "dependencies": {
     "graphology": "^0.25.4",
     "graphology-operators": "^1.6.1",
