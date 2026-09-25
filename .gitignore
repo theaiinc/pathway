@@ -1,0 +1,21 @@
+# Dependencies and build output
+node_modules
+dist
+.nx
+
+# Written at runtime: the ChromaDB vector store and scratch files
+chroma_data
+tmp
+
+# Secrets. Keep credentials out of the repository; .env.example documents them.
+.env
+.env.*
+!.env.example
+
+# Logs and editor or OS noise
+logs
+*.log
+.DS_Store
+.idea
+.vscode/*
+!.vscode/extensions.json
