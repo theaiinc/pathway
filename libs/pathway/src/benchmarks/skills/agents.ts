@@ -25,6 +25,8 @@ export interface AgentDecision {
   readonly modelCalls: number;
   readonly promptTokens: number;
   readonly completionTokens: number;
+  /** Who chose the action: the model, or a learned workflow followed without it. */
+  readonly source?: 'model' | 'pathway';
 }
 
 export interface Agent {
@@ -124,7 +126,7 @@ export class OpenAiCompatibleAgent implements Agent {
 
 export function renderTurn(turn: AgentTurn, historyWindow: number): string {
   const lines = [`Goal: ${turn.goal}`];
-  if (turn.guidance) lines.push('', turn.guidance.react);
+  if (turn.guidance?.react) lines.push('', turn.guidance.react);
 
   const recent = turn.history.slice(-historyWindow);
   lines.push('', 'Recent actions:');

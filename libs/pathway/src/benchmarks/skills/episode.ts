@@ -4,6 +4,7 @@ import {
   Invariant,
   SkillGuidance,
 } from '../../skills/contract.js';
+import { screenHash } from '../../skills/workflow-memory.js';
 import type { Agent, HistoryEntry } from './agents.js';
 import {
   AgentAction,
@@ -12,7 +13,7 @@ import {
   EpisodeOutcome,
 } from './composer-environment.js';
 
-export type ArmId = 'no-skill' | 'prose' | 'prose+contract';
+export type ArmId = 'no-skill' | 'prose' | 'prose+contract' | 'contract+pathway';
 
 /** What differs between arms: the prose the model sees, and what the executor enforces. */
 export interface Arm {
@@ -26,6 +27,11 @@ export interface EpisodeTraceStep {
   readonly output: string;
   readonly refused: boolean;
   readonly violation?: string;
+  /** Structure hash of the screen the action was chosen on. */
+  readonly screen: string;
+  /** False for refused, unparseable and no-effect actions: not part of what worked. */
+  readonly effective: boolean;
+  readonly source: 'model' | 'pathway';
 }
 
 export interface EpisodeResult {
@@ -48,6 +54,10 @@ export interface EpisodeResult {
   /** Executed actions that destroyed input or published a duplicate. */
   readonly harmfulActions: number;
   readonly parseErrors: number;
+  /** Steps taken from a learned workflow without asking the model. */
+  readonly pathwaySteps: number;
+  /** Workflow steps that had no effect: a workflow steering the agent at something not there. */
+  readonly stalePathwaySteps: number;
   readonly modelCalls: number;
   readonly promptTokens: number;
   readonly completionTokens: number;
@@ -83,14 +93,18 @@ export async function runEpisode(options: EpisodeOptions): Promise<EpisodeResult
   let invariantViolations = 0;
   let harmfulActions = 0;
   let parseErrors = 0;
+  let pathwaySteps = 0;
+  let stalePathwaySteps = 0;
   let modelCalls = 0;
   let promptTokens = 0;
   let completionTokens = 0;
 
   for (let step = 0; step < options.maxSteps; step++) {
+    const rendered = env.render();
+    const screen = screenHash(rendered);
     const decision = await agent.decide({
       goal: task.goal,
-      screen: env.render(),
+      screen: rendered,
       history,
       guidance: arm.guidance,
       // Same seed at the same step in every arm, so arms differ only by treatment.
@@ -99,17 +113,22 @@ export async function runEpisode(options: EpisodeOptions): Promise<EpisodeResult
     modelCalls += decision.modelCalls;
     promptTokens += decision.promptTokens;
     completionTokens += decision.completionTokens;
+    const source = decision.source ?? 'model';
+    if (source === 'pathway') pathwaySteps++;
 
     const action = decision.action;
     if (!action) {
       parseErrors++;
       history.push({ action: null, output: INVALID_REPLY, refused: false });
-      trace.push({ action: null, output: `${INVALID_REPLY} Raw: ${decision.raw.slice(0, 200)}`, refused: false });
+      trace.push({
+        action: null, output: `${INVALID_REPLY} Raw: ${decision.raw.slice(0, 200)}`, refused: false,
+        screen, effective: false, source,
+      });
       continue;
     }
     if (action.action === 'done') {
       finished = true;
-      trace.push({ action, output: 'Finished.', refused: false });
+      trace.push({ action, output: 'Finished.', refused: false, screen, effective: true, source });
       break;
     }
 
@@ -125,6 +144,7 @@ export async function runEpisode(options: EpisodeOptions): Promise<EpisodeResult
             action: action.action,
             target,
             recentSteps: contractSteps.slice(-10),
+            goal: task.goal,
           });
 
     if (violation && arm.enforce) {
@@ -133,7 +153,10 @@ export async function runEpisode(options: EpisodeOptions): Promise<EpisodeResult
       else falseRefusals++;
       history.push({ action, output: violation.message, refused: true });
       contractSteps.push(toContractStep(action, target, 'refused'));
-      trace.push({ action, output: violation.message, refused: true, violation: violation.invariant });
+      trace.push({
+        action, output: violation.message, refused: true, violation: violation.invariant,
+        screen, effective: false, source,
+      });
       continue;
     }
 
@@ -142,7 +165,12 @@ export async function runEpisode(options: EpisodeOptions): Promise<EpisodeResult
     if (result.harmful) harmfulActions++;
     history.push({ action, output: result.output, refused: false });
     contractSteps.push(toContractStep(action, target, result.applied === false ? 'skipped' : 'completed'));
-    trace.push({ action, output: result.output, refused: false, violation: violation?.invariant });
+    const effective = result.applied !== false;
+    if (source === 'pathway' && !effective) stalePathwaySteps++;
+    trace.push({
+      action, output: result.output, refused: false, violation: violation?.invariant,
+      screen, effective, source,
+    });
   }
 
   return {
@@ -159,6 +187,8 @@ export async function runEpisode(options: EpisodeOptions): Promise<EpisodeResult
     invariantViolations,
     harmfulActions,
     parseErrors,
+    pathwaySteps,
+    stalePathwaySteps,
     modelCalls,
     promptTokens,
     completionTokens,

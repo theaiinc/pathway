@@ -431,8 +431,9 @@ context compilation, audit findings, candidate knowledge validation, and replay.
 ### Skills Benchmark
 
 Measures whether a skill beats its own absence: the same tasks run with no skill, with the
-skill's guidance prose, and with that prose plus its contract enforced, against a local
-composer fixture. See `spec/benchmark-spec.md`.
+skill's guidance prose, with that prose plus its contract enforced, and with the contract
+plus a workflow learned from earlier runs (`SkillWorkflowMemory`), against a local composer
+fixture. See `spec/benchmark-spec.md`.
 
 ```bash
 # Deterministic: checks the fixture, contract and scoring with scripted trajectories.
@@ -442,6 +443,9 @@ npm run benchmark:ci -- --subsystem skills
 # (--base-url); this serves a model downloaded by Avalon on the default one.
 scripts/serve-avalon-model.sh unsloth_Qwen3.5-4B-GGUF &
 npm run benchmark:nightly -- --subsystem skills --runs 10 --model unsloth_Qwen3.5-4B-GGUF
+
+# Only some arms, e.g. to measure the pathway against its baseline.
+npm run benchmark:nightly -- --subsystem skills --arms no-skill,contract+pathway
 ```
 
 Recorded baselines are in `benchmarks/skills/baselines/`.

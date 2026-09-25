@@ -10,11 +10,10 @@
  * which the model may disregard. The contract is the part that cannot be
  * disregarded, because the executor checks it before an action runs.
  *
- * The invariant logic here is ported from Oasis Cognition
- * (apps/api-gateway/src/computer-use/skill-contract.ts), which enforces
- * `protect_uncommitted_input` in production. It is ported unchanged, gaps
- * included, so that the skills benchmark measures the rule that actually
- * runs rather than an improved one.
+ * The invariant logic mirrors Oasis Cognition
+ * (apps/api-gateway/src/computer-use/skill-contract.ts), which enforces both
+ * invariants in production. Keep the two in step, so that the skills
+ * benchmark measures the rule that actually runs rather than a better one.
  */
 
 export type Invariant =
@@ -27,7 +26,7 @@ export type Invariant =
    * Refuse a second submit of the same input. A submit that has not visibly
    * finished yet tempts an agent to click it again, which publishes twice.
    */
-  | { readonly kind: 'submit_once' };
+  | { readonly kind: 'submit_once'; readonly minInputLength?: number };
 
 export type InvariantKind = Invariant['kind'];
 
@@ -72,6 +71,11 @@ export interface InvariantContext {
   readonly target: string;
   /** Recent steps, oldest first. */
   readonly recentSteps: readonly ContractStep[];
+  /**
+   * The user's goal. Discarding input is refused unless the goal itself asks
+   * for it: the user can authorize throwing their work away, the agent cannot.
+   */
+  readonly goal?: string;
 }
 
 export interface InvariantViolation {
@@ -80,19 +84,40 @@ export interface InvariantViolation {
   readonly message: string;
 }
 
+/** Dismissals that need no object: the button closes whatever is open. */
+const BARE_DISMISS = /^(close|cancel|discard|dismiss|exit|×|x)$/i;
+
 /**
- * Targets that dismiss a dialog rather than committing it. "Close friends" is
- * an audience selector, not a dismissal, and is excluded explicitly.
+ * "Close …" and friends discard input only when they name the thing the input
+ * lives in. "Close dialog" and "Cancel post" do; "Close chat" closes an
+ * unrelated window and "Close friends" is an audience selector.
  */
-export const DISCARD_TARGET =
-  /^(close|cancel|discard|dismiss|exit|back|×|x)$|^(close|cancel|discard|dismiss)\s(?!friends\b)|discard.*draft|close.*without.*saving|cancel.*post|leave.*page|exit.*editor/i;
+const DISMISS_CONTAINER =
+  /^(close|cancel|discard|dismiss|exit)\s.*\b(dialog|modal|pop-?up|window|tab|post|draft|composer|editor|form|sheet|panel|page)\b/i;
 
-/** Verbs that commit input. Deliberately broad, as in Oasis. */
-export const SUBMIT_TARGET =
-  /\b(post|publish|share|send|submit|tweet|insert|^add\b|ok|done|save|confirm|apply)\b/i;
+const DISCARD_PHRASE = /discard.*draft|close.*without.*saving|cancel.*post|leave.*page|exit.*editor/i;
 
-/** Verbs that publish, the subset of submits a duplicate of which is visible to others. */
-const PUBLISH_TARGET = /^(post|publish|share|send|submit|tweet)$/i;
+/**
+ * "Back" leaves whatever was opened last: the editor straight after typing,
+ * only a sub-menu if the agent has opened one since.
+ */
+const BACK = /^(back|go back|←)$/i;
+
+/** Clicks that publish or save what was typed, wherever they come. */
+export const COMMIT_TARGET = /\b(post|publish|share|send|submit|tweet|insert|^add\b|save)\b/i;
+
+/**
+ * Confirmations that commit typed input only as the first click after it. The
+ * same words close sub-menus ("Done" on an audience picker).
+ */
+export const CONFIRM_TARGET = /\b(ok|done|confirm|apply)\b/i;
+
+/** Clicks that put something out into the world, a repeat of which is a duplicate. */
+const PUBLISH_TARGET = /^(post|publish|share|send|submit|tweet)(\s+(now|button|post|it))?$/i;
+
+/** A goal that asks for the input to be thrown away. */
+const GOAL_REQUESTS_DISCARD =
+  /\b(discard|throw away|delete|cancel|abandon|scrap)\b.{0,40}\b(draft|post|message|input|changes|text)\b|\bwithout (posting|publishing|sending|saving)\b|\bdon'?t (post|publish|send|save)\b/i;
 
 const DEFAULT_MIN_DRAFT_LENGTH = 10;
 
@@ -101,46 +126,56 @@ export function skillApplies(skill: Skill, goal: string): boolean {
   return new RegExp(skill.contract.appliesWhen, 'i').test(goal);
 }
 
+const isClick = (step: ContractStep) => step.status === 'completed' && step.action === 'click';
+
+function typedText(step: ContractStep): string | null {
+  return step.status === 'completed' && step.action === 'type' ? (step.text || '').trim() : null;
+}
+
 function lastUncommittedDraft(
   steps: readonly ContractStep[],
   minLength: number
-): string | null {
+): { index: number; text: string } | null {
   for (let i = steps.length - 1; i >= 0; i--) {
-    const step = steps[i];
-    if (step.status !== 'completed' || step.action !== 'type') continue;
-    const text = (step.text || '').trim();
-    if (text.length < minLength) continue;
+    const text = typedText(steps[i]);
+    if (text === null || text.length < minLength) continue;
 
     const committed = steps
       .slice(i + 1)
+      .filter(isClick)
       .some(
-        later =>
-          later.status === 'completed' &&
-          later.action === 'click' &&
-          SUBMIT_TARGET.test(later.target || '')
+        (click, n) =>
+          COMMIT_TARGET.test(click.target || '') || (n === 0 && CONFIRM_TARGET.test(click.target || ''))
       );
-    return committed ? null : text;
+    return committed ? null : { index: i, text };
   }
   return null;
+}
+
+function isDiscard(target: string, steps: readonly ContractStep[], draftIndex: number): boolean {
+  if (BARE_DISMISS.test(target) || DISMISS_CONTAINER.test(target) || DISCARD_PHRASE.test(target)) return true;
+  if (BACK.test(target)) return !steps.slice(draftIndex + 1).some(isClick);
+  return false;
 }
 
 function checkProtectUncommittedInput(
   invariant: Extract<Invariant, { kind: 'protect_uncommitted_input' }>,
   context: InvariantContext
 ): InvariantViolation | null {
-  if (context.action !== 'click' || !DISCARD_TARGET.test(context.target)) return null;
+  if (context.action !== 'click') return null;
 
   const draft = lastUncommittedDraft(
     context.recentSteps,
     invariant.minDraftLength ?? DEFAULT_MIN_DRAFT_LENGTH
   );
-  if (!draft) return null;
+  if (!draft || !isDiscard(context.target, context.recentSteps, draft.index)) return null;
+  if (context.goal && GOAL_REQUESTS_DISCARD.test(context.goal)) return null;
 
   return {
     invariant: 'protect_uncommitted_input',
     message:
       `REFUSED to click "${context.target}": it would discard your uncommitted input ` +
-      `("${draft.slice(0, 80)}"). You have not clicked a submit button since typing it. ` +
+      `("${draft.text.slice(0, 80)}"). You have not clicked a submit button since typing it. ` +
       `Click the submit for this context instead, such as "Post" in a composer or "Save" in a dialog.`,
   };
 }
@@ -151,16 +186,20 @@ function checkProtectUncommittedInput(
  * button is disabled on an empty draft), so it does not count; and retyping
  * text that was already published is the same input, not new input.
  */
-function checkSubmitOnce(context: InvariantContext): InvariantViolation | null {
+function checkSubmitOnce(
+  invariant: Extract<Invariant, { kind: 'submit_once' }>,
+  context: InvariantContext
+): InvariantViolation | null {
   if (context.action !== 'click' || !PUBLISH_TARGET.test(context.target)) return null;
 
+  const minLength = invariant.minInputLength ?? DEFAULT_MIN_DRAFT_LENGTH;
   let pending = '';
   const published: string[] = [];
   for (const step of context.recentSteps) {
     if (step.status !== 'completed') continue;
     if (step.action === 'type') pending += step.text || '';
     else if (step.action === 'clear') pending = '';
-    else if (step.action === 'click' && PUBLISH_TARGET.test(step.target || '') && pending.trim()) {
+    else if (isClick(step) && PUBLISH_TARGET.test(step.target || '') && pending.trim().length >= minLength) {
       published.push(normalizeInput(pending));
       pending = '';
     }
@@ -202,7 +241,7 @@ export function checkInvariants(
     const violation =
       invariant.kind === 'protect_uncommitted_input'
         ? checkProtectUncommittedInput(invariant, context)
-        : checkSubmitOnce(context);
+        : checkSubmitOnce(invariant, context);
     if (violation) return violation;
   }
   return null;

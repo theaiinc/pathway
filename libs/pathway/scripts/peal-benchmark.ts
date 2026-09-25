@@ -9,7 +9,8 @@ import {
 } from '../src/benchmarks/profiles.js';
 import { futureBenchmarkPlaceholders } from '../src/benchmarks/placeholder-benchmarks.js';
 import { RetrievalBenchmark } from '../src/benchmarks/retrieval-benchmark.js';
-import { SkillBenchmark } from '../src/benchmarks/skills/skill-benchmark.js';
+import { ArmId } from '../src/benchmarks/skills/episode.js';
+import { SKILL_BENCHMARK_ARMS, SkillBenchmark } from '../src/benchmarks/skills/skill-benchmark.js';
 
 interface CliOptions {
   readonly profile: BenchmarkProfileId;
@@ -21,6 +22,7 @@ interface CliOptions {
   readonly model?: string;
   readonly baseUrl?: string;
   readonly seed?: number;
+  readonly arms?: readonly ArmId[];
 }
 
 async function main(): Promise<void> {
@@ -58,6 +60,7 @@ function selectBenchmarks(options: CliOptions): Benchmark[] {
     new RetrievalBenchmark({ corpusPath: options.corpusPath }),
     new SkillBenchmark({
       runs: options.runs,
+      arms: options.arms,
       model: { model: options.model, baseUrl: options.baseUrl },
       // Live runs take minutes; progress goes to stderr so --json stays parseable.
       log: line => console.error(`[skills] ${line}`),
@@ -80,6 +83,7 @@ function parseArgs(args: readonly string[]): CliOptions {
   let model: string | undefined;
   let baseUrl: string | undefined;
   let seed: number | undefined;
+  let arms: ArmId[] | undefined;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -101,6 +105,8 @@ function parseArgs(args: readonly string[]): CliOptions {
       model = args[++i];
     } else if (arg === '--base-url') {
       baseUrl = args[++i];
+    } else if (arg === '--arms') {
+      arms = parseArms(args[++i]);
     } else if (arg === '--seed') {
       seed = parsePositiveInteger('--seed', args[++i]);
     } else if (arg === '--help' || arg === '-h') {
@@ -111,7 +117,16 @@ function parseArgs(args: readonly string[]): CliOptions {
     }
   }
 
-  return { profile, subsystem, live, json, corpusPath, runs, model, baseUrl, seed };
+  return { profile, subsystem, live, json, corpusPath, runs, model, baseUrl, seed, arms };
+}
+
+function parseArms(value: string | undefined): ArmId[] {
+  const arms = (value || '').split(',').map(arm => arm.trim()).filter(Boolean);
+  const unknown = arms.filter(arm => !SKILL_BENCHMARK_ARMS.includes(arm as ArmId));
+  if (!arms.length || unknown.length) {
+    throw new Error(`--arms takes a comma-separated list of ${SKILL_BENCHMARK_ARMS.join(', ')}; got ${value || '(missing)'}`);
+  }
+  return arms as ArmId[];
 }
 
 function parsePositiveInteger(flag: string, value: string | undefined): number {
@@ -196,6 +211,7 @@ Options:
   --model <id>        skills: model id (default $PATHWAY_SKILLS_MODEL or unsloth_Qwen3.5-4B-GGUF)
   --base-url <url>    skills: OpenAI-compatible endpoint (default $PATHWAY_SKILLS_BASE_URL or http://127.0.0.1:8790/v1,
                       where scripts/serve-avalon-model.sh serves)
+  --arms <a,b>        skills: arms to run live (default all: ${SKILL_BENCHMARK_ARMS.join(', ')})
   --seed <n>          base seed; runs of every arm share it`);
 }
 

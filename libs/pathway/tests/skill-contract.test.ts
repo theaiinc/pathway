@@ -67,3 +67,28 @@ describe('submit_once', () => {
     ).toBe('submit_once');
   });
 });
+
+describe('protect_uncommitted_input gaps, fixed in step with Oasis', () => {
+  const draft = [typed('A draft worth keeping')];
+
+  it('allows closing an unrelated window, and refuses naming the draft container', () => {
+    expect(check('Close chat', draft)).toBeNull();
+    expect(check('Close Create post dialog', draft)?.invariant).toBe('protect_uncommitted_input');
+  });
+
+  it('allows Back out of a sub-menu opened after typing', () => {
+    expect(check('Back', [...draft, clicked('Audience: Friends')])).toBeNull();
+    expect(check('Back', draft)?.invariant).toBe('protect_uncommitted_input');
+  });
+
+  it("does not count a sub-menu's Done as a commit", () => {
+    expect(check('Close', [...draft, clicked('Audience: Friends'), clicked('Done')])?.invariant).toBe(
+      'protect_uncommitted_input'
+    );
+    expect(check('Close', [...draft, clicked('Done')])).toBeNull();
+  });
+
+  it('allows a discard the goal asks for', () => {
+    expect(checkInvariants(ALL, { action: 'click', target: 'Discard', recentSteps: draft, goal: 'Discard my draft' })).toBeNull();
+  });
+});

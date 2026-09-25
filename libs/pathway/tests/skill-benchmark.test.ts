@@ -96,6 +96,36 @@ describe('SkillBenchmark (live, with a fake model)', () => {
   });
 });
 
+describe('SkillBenchmark (live pathway arm, with a fake model)', () => {
+  it('learns a workflow, then follows it without the model, and survives a redesign', async () => {
+    const corpus = await loadSkillBenchmarkCorpus();
+    const basicOnly = {
+      ...corpus,
+      tasks: corpus.tasks.filter(task => task.id === 'basic-post'),
+      redesign: { taskIds: ['basic-post'], runs: 2 },
+    };
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'skills-corpus-'));
+    const corpusPath = path.join(dir, 'corpus.json');
+    await fs.writeFile(corpusPath, JSON.stringify(basicOnly));
+
+    const result = await new SkillBenchmark({
+      corpusPath,
+      runs: 4,
+      arms: ['contract+pathway'],
+      agentFactory: () => new GuidanceSensitiveAgent(),
+    }).run({ profile: getBenchmarkProfile('nightly'), liveServices: true });
+
+    expect(result.metrics['learning.run1.meanModelCalls']).toBeGreaterThan(0);
+    expect(result.metrics['learning.later.meanModelCalls']).toBe(0);
+    expect(result.metrics['learning.later.successRate']).toBe(1);
+    // One first-run episode is too few to call the drop significant, so the
+    // learning case itself stays a warning here; the metrics show the drop.
+    expect(result.metrics['redesign.invalidations']).toBe(1);
+    expect(result.metrics['redesign.stalePathwaySteps']).toBe(0);
+    expect(result.cases.find(item => item.id === 'redesign/contract+pathway')?.status).toBe('passed');
+  });
+});
+
 describe('ComposerEnvironment', () => {
   it('publishes twice when Post is clicked while posting', async () => {
     const corpus = await loadSkillBenchmarkCorpus();

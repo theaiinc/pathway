@@ -11,10 +11,13 @@ import {
   mean,
   summarizeCaseStatus,
 } from '../benchmark.js';
+import { SkillWorkflowMemory } from '../../skills/workflow-memory.js';
 import { createBenchmarkProvenance } from '../provenance.js';
 import { Agent, OpenAiCompatibleAgent, OpenAiCompatibleAgentOptions, ScriptedAgent } from './agents.js';
 import { AgentAction, ComposerTaskFixture } from './composer-environment.js';
 import { Arm, ArmId, EpisodeResult, runEpisode } from './episode.js';
+import { PathwayAgent } from './pathway-agent.js';
+import { runPathwayCases, toRunReport } from './pathway-cases.js';
 import { excludesZero, Interval, meanDifference, proportionDifference, wilson } from './statistics.js';
 
 /**
@@ -60,6 +63,11 @@ export interface SkillBenchmarkCorpus {
     readonly shouldApply: boolean;
     readonly knownIssue?: string;
   }[];
+  /**
+   * Tasks rerun with renamed controls after the main runs, in the pathway arm
+   * only: a learned workflow must notice the page changed.
+   */
+  readonly redesign?: { readonly taskIds: readonly string[]; readonly runs: number };
   readonly trajectories: readonly {
     readonly id: string;
     readonly taskId: string;
@@ -84,10 +92,13 @@ export interface SkillBenchmarkOptions {
   readonly model?: Partial<OpenAiCompatibleAgentOptions>;
   /** Progress lines for long live runs. */
   readonly log?: (line: string) => void;
+  /** Arms to run live; all by default. */
+  readonly arms?: readonly ArmId[];
 }
 
 const benchmarkVersion = '1.0.0';
-const ARM_ORDER: readonly ArmId[] = ['no-skill', 'prose', 'prose+contract'];
+const ARM_ORDER: readonly ArmId[] = ['no-skill', 'prose', 'prose+contract', 'contract+pathway'];
+export const SKILL_BENCHMARK_ARMS = ARM_ORDER;
 const MAX_CONSECUTIVE_ERRORS = 5;
 
 export class SkillBenchmark implements Benchmark {
@@ -123,8 +134,9 @@ export class SkillBenchmark implements Benchmark {
       };
     } else {
       const outcome = await runTrajectories(corpus, this.maxSteps());
-      cases = [...applicability.cases, ...outcome.cases];
-      metrics = { ...applicability.metrics, ...outcome.metrics };
+      const pathway = await runPathwayCases(corpus, this.maxSteps());
+      cases = [...applicability.cases, ...outcome.cases, ...pathway.cases];
+      metrics = { ...applicability.metrics, ...outcome.metrics, ...pathway.metrics };
       runtime = { mode: 'scripted' };
     }
 
@@ -157,6 +169,10 @@ export class SkillBenchmark implements Benchmark {
     return this.options.maxSteps ?? 12;
   }
 
+  private armOrder(): readonly ArmId[] {
+    return this.options.arms?.length ? ARM_ORDER.filter(arm => this.options.arms!.includes(arm)) : ARM_ORDER;
+  }
+
   private async runLive(
     corpus: SkillBenchmarkCorpus,
     context: BenchmarkRunContext,
@@ -166,60 +182,103 @@ export class SkillBenchmark implements Benchmark {
       'no-skill': { id: 'no-skill', enforce: false },
       prose: { id: 'prose', guidance: corpus.skill.guidance, enforce: false },
       'prose+contract': { id: 'prose+contract', guidance: corpus.skill.guidance, enforce: true },
+      // The model sees plan guidance only; the workflow replaces the step prose.
+      'contract+pathway': { id: 'contract+pathway', guidance: corpus.skill.guidance, enforce: true },
     };
+    const armOrder = this.armOrder();
+    const memory = new SkillWorkflowMemory();
     const log = this.options.log ?? (() => undefined);
     const episodes: EpisodeResult[] = [];
+    const redesignEpisodes: EpisodeResult[] = [];
+    const invalidationsByEpisode = new Map<EpisodeResult, number>();
     const errors: { taskId: string; arm: ArmId; run: number; message: string }[] = [];
     const baseSeed = context.seed ?? 1;
-    const total = this.runs() * corpus.tasks.length * ARM_ORDER.length;
+    const redesignTasks = redesignedTasks(corpus);
+    const redesignRuns = armOrder.includes('contract+pathway') ? corpus.redesign?.runs ?? 0 : 0;
+    const total = this.runs() * corpus.tasks.length * armOrder.length + redesignRuns * redesignTasks.length;
     let consecutiveErrors = 0;
     let stoppedEarly: string | undefined;
 
+    const attempt = async (task: ComposerTaskFixture, armId: ArmId, run: number, into: EpisodeResult[]) => {
+      const label = `${episodes.length + redesignEpisodes.length + errors.length + 1}/${total} ${task.id} ${armId} run ${run + 1}`;
+      const pathwayAgent =
+        armId === 'contract+pathway'
+          ? new PathwayAgent(agent, { memory, skillId: corpus.skill.id, guidance: corpus.skill.guidance })
+          : undefined;
+      try {
+        const episode = await runEpisode({
+          task,
+          agent: pathwayAgent ?? agent,
+          arm: arms[armId],
+          invariants: corpus.skill.contract.invariants,
+          run,
+          seed: baseSeed + run,
+          maxSteps: this.maxSteps(),
+        });
+        into.push(episode);
+        consecutiveErrors = 0;
+        let learned = '';
+        if (pathwayAgent) {
+          invalidationsByEpisode.set(episode, pathwayAgent.invalidations);
+          const retention = memory.learn(toRunReport(corpus.skill.id, task.goal, episode));
+          learned =
+            `, ${episode.pathwaySteps}/${episode.steps} steps from the workflow` +
+            (pathwayAgent.invalidations ? `, invalidated ${pathwayAgent.invalidations}` : '') +
+            (retention.retained ? `, retained (${retention.reason})` : '');
+        }
+        log(
+          `${label}: ${episode.outcome.success ? 'success' : `failed (${episode.outcome.reasons.join('; ') || 'unfinished'})`}, ` +
+            `${episode.steps} steps, ${(episode.wallClockMs / 1000).toFixed(1)}s${learned}`
+        );
+        return true;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        errors.push({ taskId: task.id, arm: armId, run, message });
+        log(`${label}: error: ${message}`);
+        if (episodes.length === 0 && errors.length >= 3) {
+          throw new Error(`Skills benchmark could not reach the model: ${message}`);
+        }
+        // A model server that has failed this many times in a row has
+        // usually wedged (a GPU out of memory stays out of memory), and
+        // every further episode would only record the same error.
+        if (++consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          stoppedEarly = `stopped after ${consecutiveErrors} consecutive errors, the last: ${message}`;
+          log(stoppedEarly);
+          return false;
+        }
+        return true;
+      }
+    };
+
     // Arms are interleaved within each run so that drift over a long session
     // (thermal throttling, memory pressure, a model reload) lands on every arm
-    // alike instead of on whichever ran last.
+    // alike instead of on whichever ran last. Runs go in order, so the
+    // pathway arm's run n has learned from runs 1..n-1.
     runs: for (let run = 0; run < this.runs(); run++) {
       for (const task of corpus.tasks) {
-        for (const armId of ARM_ORDER) {
-          const label = `${episodes.length + errors.length + 1}/${total} ${task.id} ${armId} run ${run + 1}`;
-          try {
-            const episode = await runEpisode({
-              task,
-              agent,
-              arm: arms[armId],
-              invariants: corpus.skill.contract.invariants,
-              run,
-              seed: baseSeed + run,
-              maxSteps: this.maxSteps(),
-            });
-            episodes.push(episode);
-            consecutiveErrors = 0;
-            log(
-              `${label}: ${episode.outcome.success ? 'success' : `failed (${episode.outcome.reasons.join('; ') || 'unfinished'})`}, ` +
-                `${episode.steps} steps, ${(episode.wallClockMs / 1000).toFixed(1)}s`
-            );
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            errors.push({ taskId: task.id, arm: armId, run, message });
-            log(`${label}: error: ${message}`);
-            if (episodes.length === 0 && errors.length >= 3) {
-              throw new Error(`Skills benchmark could not reach the model: ${message}`);
-            }
-            // A model server that has failed this many times in a row has
-            // usually wedged (a GPU out of memory stays out of memory), and
-            // every further episode would only record the same error.
-            if (++consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-              stoppedEarly = `stopped after ${consecutiveErrors} consecutive errors, the last: ${message}`;
-              log(stoppedEarly);
-              break runs;
-            }
-          }
+        for (const armId of armOrder) {
+          if (!(await attempt(task, armId, run, episodes))) break runs;
         }
       }
     }
 
-    return summarizeLive(corpus, episodes, errors, stoppedEarly);
+    // Then the page changes under the learned workflows.
+    redesign: for (let run = 0; run < redesignRuns && !stoppedEarly; run++) {
+      for (const task of redesignTasks) {
+        if (!(await attempt(task, 'contract+pathway', run, redesignEpisodes))) break redesign;
+      }
+    }
+
+    return summarizeLive(corpus, armOrder, episodes, redesignEpisodes, invalidationsByEpisode, errors, stoppedEarly);
   }
+}
+
+/** The corpus's redesign tasks: the same goals, with every control renamed. */
+export function redesignedTasks(corpus: SkillBenchmarkCorpus): ComposerTaskFixture[] {
+  const ids = new Set(corpus.redesign?.taskIds ?? []);
+  return corpus.tasks
+    .filter(task => ids.has(task.id))
+    .map(task => ({ ...task, id: `${task.id}@redesign`, setup: { ...task.setup, labels: 'redesign' as const } }));
 }
 
 export async function loadSkillBenchmarkCorpus(
@@ -394,6 +453,7 @@ interface ArmSummary {
   readonly success: Interval;
   readonly steps: readonly number[];
   readonly tokens: readonly number[];
+  readonly modelCalls: readonly number[];
   readonly metrics: Record<string, number>;
 }
 
@@ -403,6 +463,7 @@ function summarizeArm(episodes: readonly EpisodeResult[]): ArmSummary {
   const success = wilson(successes, n);
   const steps = episodes.map(episode => episode.steps);
   const tokens = episodes.map(episode => episode.promptTokens + episode.completionTokens);
+  const modelCalls = episodes.map(episode => episode.modelCalls);
   const perEpisode = (pick: (episode: EpisodeResult) => number) => (n ? episodes.reduce((sum, e) => sum + pick(e), 0) / n : 0);
   return {
     episodes: n,
@@ -410,6 +471,7 @@ function summarizeArm(episodes: readonly EpisodeResult[]): ArmSummary {
     success,
     steps,
     tokens,
+    modelCalls,
     metrics: {
       episodes: n,
       successRate: success.estimate,
@@ -425,6 +487,8 @@ function summarizeArm(episodes: readonly EpisodeResult[]): ArmSummary {
       falseRefusalsPerEpisode: perEpisode(e => e.falseRefusals),
       parseErrorsPerEpisode: perEpisode(e => e.parseErrors),
       modelCallsPerEpisode: perEpisode(e => e.modelCalls),
+      pathwayStepsPerEpisode: perEpisode(e => e.pathwaySteps),
+      stalePathwayStepsPerEpisode: perEpisode(e => e.stalePathwaySteps),
       tokensPerEpisode: mean(tokens),
       meanWallClockMs: perEpisode(e => e.wallClockMs),
     },
@@ -433,7 +497,10 @@ function summarizeArm(episodes: readonly EpisodeResult[]): ArmSummary {
 
 function summarizeLive(
   corpus: SkillBenchmarkCorpus,
+  armOrder: readonly ArmId[],
   episodes: readonly EpisodeResult[],
+  redesignEpisodes: readonly EpisodeResult[],
+  invalidationsByEpisode: ReadonlyMap<EpisodeResult, number>,
   errors: readonly { taskId: string; arm: ArmId; run: number; message: string }[],
   stoppedEarly?: string
 ): { cases: BenchmarkCaseResult[]; metrics: Record<string, number> } {
@@ -441,14 +508,14 @@ function summarizeLive(
   const metrics: Record<string, number> = { 'live.episodes': episodes.length, 'live.errors': errors.length };
   const byArm = new Map<ArmId, ArmSummary>();
 
-  for (const armId of ARM_ORDER) {
+  for (const armId of armOrder) {
     const summary = summarizeArm(episodes.filter(episode => episode.arm === armId));
     byArm.set(armId, summary);
     for (const [key, value] of Object.entries(summary.metrics)) metrics[`${armId}.${key}`] = value;
   }
 
   for (const task of corpus.tasks) {
-    for (const armId of ARM_ORDER) {
+    for (const armId of armOrder) {
       const taskEpisodes = episodes.filter(episode => episode.taskId === task.id && episode.arm === armId);
       const summary = summarizeArm(taskEpisodes);
       cases.push({
@@ -459,6 +526,7 @@ function summarizeLive(
           run: episode.run,
           success: episode.outcome.success,
           reasons: episode.outcome.reasons,
+          pathwaySteps: episode.pathwaySteps,
           trace: episode.trace,
         })),
         message: `${summary.successes}/${summary.episodes} succeeded, ${summary.metrics.meanSteps.toFixed(1)} steps on average`,
@@ -467,18 +535,24 @@ function summarizeLive(
     }
   }
 
-  const comparisons: [ArmId, ArmId][] = [
-    ['prose', 'no-skill'],
-    ['prose+contract', 'no-skill'],
-    ['prose+contract', 'prose'],
-  ];
+  const comparisons: [ArmId, ArmId][] = (
+    [
+      ['prose', 'no-skill'],
+      ['prose+contract', 'no-skill'],
+      ['prose+contract', 'prose'],
+      ['contract+pathway', 'no-skill'],
+      ['contract+pathway', 'prose+contract'],
+    ] as [ArmId, ArmId][]
+  ).filter(([a, b]) => byArm.has(a) && byArm.has(b));
   for (const [treatment, baseline] of comparisons) {
     const a = byArm.get(treatment)!;
     const b = byArm.get(baseline)!;
     const success = proportionDifference(a.successes, a.episodes, b.successes, b.episodes);
     const steps = meanDifference(a.steps, b.steps);
     const tokens = meanDifference(a.tokens, b.tokens);
+    const calls = meanDifference(a.modelCalls, b.modelCalls);
     const key = `delta.${treatment}_vs_${baseline}`;
+    metrics[`${key}.modelCallsPerEpisode`] = calls.estimate;
     metrics[`${key}.successRate`] = success.estimate;
     metrics[`${key}.successRateLow`] = success.low;
     metrics[`${key}.successRateHigh`] = success.high;
@@ -504,14 +578,28 @@ function summarizeLive(
         successDeltaHigh: success.high,
         stepsDelta: steps.estimate,
         tokensDelta: tokens.estimate,
+        modelCallsDelta: calls.estimate,
       },
       message:
         `success ${formatPercent(a.success.estimate)} vs ${formatPercent(b.success.estimate)}, ` +
         `delta ${formatSigned(success.estimate)} [95% CI ${formatSigned(success.low)}, ${formatSigned(success.high)}]` +
         (excludesZero(success) ? '' : ': not significant') +
-        `; steps ${formatSigned(steps.estimate, 1)}; tokens ${formatSigned(tokens.estimate, 0)} per episode`,
+        `; steps ${formatSigned(steps.estimate, 1)}; model calls ${formatSigned(calls.estimate, 1)}; ` +
+        `tokens ${formatSigned(tokens.estimate, 0)} per episode`,
       durationMs: 0,
     });
+  }
+
+  const pathway = episodes.filter(episode => episode.arm === 'contract+pathway');
+  if (pathway.length) {
+    const learning = summarizeLearning(pathway);
+    cases.push(learning.case);
+    Object.assign(metrics, learning.metrics);
+  }
+  if (redesignEpisodes.length) {
+    const redesign = summarizeRedesign(redesignEpisodes, invalidationsByEpisode);
+    cases.push(redesign.case);
+    Object.assign(metrics, redesign.metrics);
   }
 
   if (errors.length) {
@@ -537,4 +625,93 @@ function formatPercent(value: number): string {
 function formatSigned(value: number, digits = 2): string {
   const fixed = value.toFixed(digits);
   return value > 0 ? `+${fixed}` : fixed;
+}
+
+/**
+ * Does repeated exposure make the skill better? Success, steps and model
+ * calls by run: run 1 has nothing learned, run n has runs 1..n-1 behind it.
+ */
+function summarizeLearning(episodes: readonly EpisodeResult[]): {
+  case: BenchmarkCaseResult;
+  metrics: Record<string, number>;
+} {
+  const runs = [...new Set(episodes.map(episode => episode.run))].sort((a, b) => a - b);
+  const curve = runs.map(run => {
+    const inRun = episodes.filter(episode => episode.run === run);
+    return {
+      run: run + 1,
+      successRate: mean(inRun.map(e => (e.outcome.success ? 1 : 0))),
+      meanSteps: mean(inRun.map(e => e.steps)),
+      meanModelCalls: mean(inRun.map(e => e.modelCalls)),
+      pathwayShare: mean(inRun.map(e => (e.steps ? e.pathwaySteps / e.steps : 0))),
+    };
+  });
+  const first = episodes.filter(episode => episode.run === runs[0]);
+  const later = episodes.filter(episode => episode.run !== runs[0]);
+  const calls = meanDifference(later.map(e => e.modelCalls), first.map(e => e.modelCalls));
+  const steps = meanDifference(later.map(e => e.steps), first.map(e => e.steps));
+  const improved = later.length > 0 && calls.high < 0;
+  return {
+    case: {
+      id: 'learning/contract+pathway',
+      status: improved ? 'passed' : 'warning',
+      metrics: { modelCallsDelta: calls.estimate, stepsDelta: steps.estimate },
+      actual: curve,
+      message:
+        `run 1: ${curve[0].meanModelCalls.toFixed(1)} model calls, ${curve[0].meanSteps.toFixed(1)} steps; ` +
+        `later runs: ${mean(later.map(e => e.modelCalls)).toFixed(1)} model calls, ${mean(later.map(e => e.steps)).toFixed(1)} steps` +
+        (improved ? '' : ': no significant reduction in model calls'),
+      durationMs: 0,
+    },
+    metrics: {
+      'learning.run1.successRate': curve[0].successRate,
+      'learning.run1.meanModelCalls': curve[0].meanModelCalls,
+      'learning.run1.meanSteps': curve[0].meanSteps,
+      'learning.later.successRate': mean(later.map(e => (e.outcome.success ? 1 : 0))),
+      'learning.later.meanModelCalls': mean(later.map(e => e.modelCalls)),
+      'learning.later.meanSteps': mean(later.map(e => e.steps)),
+      'learning.later.pathwayShare': mean(later.map(e => (e.steps ? e.pathwaySteps / e.steps : 0))),
+    },
+  };
+}
+
+/**
+ * After the page is redesigned, a learned workflow must notice and hand back
+ * to the model, never click at controls that are gone.
+ */
+function summarizeRedesign(
+  episodes: readonly EpisodeResult[],
+  invalidationsByEpisode: ReadonlyMap<EpisodeResult, number>
+): { case: BenchmarkCaseResult; metrics: Record<string, number> } {
+  const stale = episodes.reduce((sum, e) => sum + e.stalePathwaySteps, 0);
+  const invalidations = episodes.reduce((sum, e) => sum + (invalidationsByEpisode.get(e) ?? 0), 0);
+  const successRate = mean(episodes.map(e => (e.outcome.success ? 1 : 0)));
+  return {
+    case: {
+      id: 'redesign/contract+pathway',
+      status: stale === 0 ? 'passed' : 'failed',
+      metrics: { stalePathwaySteps: stale, invalidations, successRate },
+      actual: episodes.map(e => ({
+        task: e.taskId,
+        run: e.run + 1,
+        success: e.outcome.success,
+        invalidations: invalidationsByEpisode.get(e) ?? 0,
+        pathwaySteps: e.pathwaySteps,
+        stalePathwaySteps: e.stalePathwaySteps,
+        modelCalls: e.modelCalls,
+        trace: e.trace,
+      })),
+      message:
+        `${invalidations} invalidation(s), ${stale} stale workflow step(s) executed, ` +
+        `${formatPercent(successRate)} success on the redesigned page`,
+      durationMs: episodes.reduce((sum, e) => sum + e.wallClockMs, 0),
+    },
+    metrics: {
+      'redesign.episodes': episodes.length,
+      'redesign.invalidations': invalidations,
+      'redesign.stalePathwaySteps': stale,
+      'redesign.successRate': successRate,
+      'redesign.meanModelCalls': mean(episodes.map(e => e.modelCalls)),
+    },
+  };
 }
