@@ -2,6 +2,7 @@ import type { Hash } from '../../cas/hash.js';
 import type { SkillGuidance } from '../../skills/contract.js';
 import { screenHash, SkillWorkflowMemory } from '../../skills/workflow-memory.js';
 import type { Agent, AgentDecision, AgentTurn } from './agents.js';
+import type { AgentAction } from './composer-environment.js';
 
 export interface PathwayAgentOptions {
   readonly memory: SkillWorkflowMemory;
@@ -55,7 +56,8 @@ export class PathwayAgent implements Agent {
       if (check.kind === 'follow') {
         this.following.index++;
         return {
-          action: check.step,
+          // Workflows learned here hold this benchmark's own actions.
+          action: check.step as AgentAction,
           raw: '[pathway]',
           modelCalls: 0,
           promptTokens: 0,

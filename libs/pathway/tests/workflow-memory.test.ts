@@ -83,3 +83,61 @@ describe('SkillWorkflowMemory', () => {
     expect(screenHash(screen('one'))).not.toBe(screenHash(screen('one').replace('"Post"', '"Publish"')));
   });
 });
+
+describe('SkillWorkflowMemory for live executors', () => {
+  it('survives a snapshot round trip, provenance included', () => {
+    const memory = new SkillWorkflowMemory();
+    memory.learn(run());
+    memory.learn(run({ goal: 'Post "Hello there, everyone" on Facebook, to Close friends.' }));
+    const restored = SkillWorkflowMemory.restore(JSON.parse(JSON.stringify(memory.snapshot())));
+
+    const { id } = restored.recall('compose', GOAL, FEED)!;
+    // The derivations came back too: one changed screen still invalidates both.
+    expect(restored.check(id, 1, hashContent('redesigned composer'), GOAL)).toMatchObject({ invalidated: 2 });
+    expect(SkillWorkflowMemory.restore(restored.snapshot()).recall('compose', GOAL, FEED)).toBeNull();
+  });
+
+  it('lists candidates for a goal regardless of start screen', () => {
+    const memory = new SkillWorkflowMemory();
+    memory.learn(run());
+    memory.learn(run({ steps: run().steps.map(step => (step.screen === FEED ? { ...step, screen: hashContent('other feed') } : step)) }));
+    expect(memory.candidates('compose', 'Post "Anything at all here" on Facebook.')).toHaveLength(2);
+    expect(memory.candidates('compose', 'Delete my last post on Facebook.')).toHaveLength(0);
+  });
+
+  it('refuses a workflow that types text the goal did not ask for', () => {
+    const memory = new SkillWorkflowMemory();
+    const stale = run({
+      steps: [
+        { step: { action: 'click', target: 'Open composer' }, screen: FEED, effective: true },
+        { step: { action: 'type', text: 'Yesterday\'s announcement text' }, screen: COMPOSER, effective: true },
+      ],
+    });
+    expect(memory.learn(stale)).toEqual({ retained: false, reason: 'types text the goal did not ask for' });
+  });
+
+  it('templates text after a colon when the goal has no quotes', () => {
+    const memory = new SkillWorkflowMemory();
+    const goal = 'Post on Facebook: see you all tonight';
+    memory.learn(run({
+      goal,
+      steps: [
+        { step: { action: 'click', target: 'Open composer' }, screen: FEED, effective: true },
+        { step: { action: 'type', text: 'see you all tonight' }, screen: COMPOSER, effective: true },
+      ],
+    }));
+    const [candidate] = memory.candidates('compose', 'Post on Facebook: lunch is at noon');
+    expect(memory.check(candidate.id, 1, COMPOSER, 'Post on Facebook: lunch is at noon')).toEqual({
+      kind: 'follow',
+      step: { action: 'type', text: 'lunch is at noon' },
+    });
+  });
+
+  it('can be told to stop trusting a workflow', () => {
+    const memory = new SkillWorkflowMemory();
+    memory.learn(run());
+    const { id } = memory.recall('compose', GOAL, FEED)!;
+    expect(memory.invalidate(id)).toBe(true);
+    expect(memory.recall('compose', GOAL, FEED)).toBeNull();
+  });
+});

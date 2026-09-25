@@ -1,8 +1,51 @@
 {
   "name": "@theaiinc/pathway",
-  "version": "0.0.4",
+  "version": "0.1.0",
+  "description": "Pathway: case-based workflow reasoning with the PEAL runtime, and skills as contract plus learned pathway.",
   "type": "commonjs",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/theaiinc/pathway.git",
+    "directory": "libs/pathway"
+  },
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./skills": {
+      "types": "./src/skills/index.d.ts",
+      "default": "./src/skills/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "graphology": "^0.25.4",
+    "graphology-operators": "^1.6.1",
+    "graphology-traversal": "^0.3.1",
+    "graphology-types": "^0.24.7",
+    "tslib": "^2.8.1",
+    "uuid": "^14.0.1"
+  },
+  "peerDependencies": {
+    "chromadb": "^1.8.1",
+    "dotenv": "^16.4.5",
+    "openai": "^4.15.3"
+  },
+  "peerDependenciesMeta": {
+    "chromadb": {
+      "optional": true
+    },
+    "dotenv": {
+      "optional": true
+    },
+    "openai": {
+      "optional": true
+    }
+  },
   "scripts": {
     "publish": "node scripts/publish.js",
     "test": "vitest run --config vitest.config.ts",

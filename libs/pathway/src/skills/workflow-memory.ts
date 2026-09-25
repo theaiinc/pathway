@@ -29,14 +29,18 @@ import {
   ValidationEngine,
   ValidationResult,
 } from '../learning/validation-engine.js';
-import { ProvenanceGraph } from '../provenance/provenance-graph.js';
+import { Derivation, ProvenanceGraph } from '../provenance/provenance-graph.js';
 
-export type WorkflowStepAction =
-  | { readonly action: 'click'; readonly target: string }
-  | { readonly action: 'type'; readonly text: string }
-  | { readonly action: 'clear' }
-  | { readonly action: 'wait' }
-  | { readonly action: 'done' };
+/**
+ * One action, in whatever vocabulary the executor uses ('click', 'type',
+ * 'navigate', 'click_scoped', ...). Typed text lives in `text`.
+ */
+export interface WorkflowStepAction {
+  readonly action: string;
+  readonly target?: string;
+  readonly text?: string;
+  readonly anchor?: string;
+}
 
 export interface WorkflowStep {
   /** Typed text is stored as `{{text}}` when it was the goal's quoted text, so the workflow generalizes. */
@@ -99,13 +103,18 @@ function honouredContract(candidate: CandidateKnowledge): boolean {
 
 /** Quoted text in a goal: what the user wants typed. */
 const QUOTED = /["“]([^"”]+)["”]/;
+/** Otherwise, what follows the first colon: "Post on Facebook: see you tonight". */
+const AFTER_COLON = /^[^:]{3,80}:\s*(\S[\s\S]*)$/;
 
-export function goalIntent(goal: string): string {
-  return goal.replace(QUOTED, '"{{text}}"').trim();
+/** The text a goal asks to be typed, if it names one. */
+export function goalText(goal: string): string | undefined {
+  return goal.match(QUOTED)?.[1] ?? goal.match(AFTER_COLON)?.[1]?.trim();
 }
 
-function goalText(goal: string): string | undefined {
-  return goal.match(QUOTED)?.[1];
+/** The goal with the text it asks for abstracted: which task a workflow does. */
+export function goalIntent(goal: string): string {
+  const text = goalText(goal);
+  return (text === undefined ? goal : goal.replace(text, '{{text}}')).trim();
 }
 
 /** The structure of a screen as an agent reads it: its title and the labels it can act on, not their contents. */
@@ -133,9 +142,25 @@ export interface WorkflowMemoryStats {
   readonly invalidated: number;
 }
 
+/** Everything a memory knows, as plain JSON, for persisting between processes. */
+export interface WorkflowMemorySnapshot {
+  readonly version: 1;
+  readonly workflows: readonly SkillWorkflow[];
+  readonly derivations: readonly Derivation[];
+  readonly active: readonly (readonly [string, Hash])[];
+  readonly invalid: readonly Hash[];
+  readonly stats: WorkflowMemoryStats;
+}
+
+export interface RecalledWorkflow {
+  readonly id: Hash;
+  readonly workflow: SkillWorkflow;
+}
+
 export class SkillWorkflowMemory {
   private readonly store = new NodeStore();
   private readonly provenance = new ProvenanceGraph();
+  private readonly derivations: Derivation[] = [];
   /** `${skillId}\n${intent}\n${startScreen}` -> the workflow node currently trusted for it. */
   private readonly active = new Map<string, Hash>();
   private readonly invalid = new Set<Hash>();
@@ -147,10 +172,63 @@ export class SkillWorkflowMemory {
    * The trusted workflow for this skill and goal that starts on the current
    * screen, if one has been learned and not invalidated.
    */
-  recall(skillId: string, goal: string, startScreen: Hash): { readonly id: Hash; readonly workflow: SkillWorkflow } | null {
+  recall(skillId: string, goal: string, startScreen: Hash): RecalledWorkflow | null {
     const id = this.active.get(key(skillId, goalIntent(goal), startScreen));
     if (!id || this.invalid.has(id)) return null;
-    return { id, workflow: this.store.get(id)!.content as SkillWorkflow };
+    const workflow = this.store.get(id)!.content as SkillWorkflow;
+    return appliesTo(workflow, goal) ? { id, workflow } : null;
+  }
+
+  /**
+   * Every trusted workflow for this skill and goal, whatever screen it starts
+   * on. For executors whose screen fingerprint depends on the step being
+   * checked, so the caller tests each first step against the page itself.
+   */
+  candidates(skillId: string, goal: string): RecalledWorkflow[] {
+    const prefix = `${skillId}\n${goalIntent(goal)}\n`;
+    return [...this.active.entries()]
+      .filter(([slot, id]) => slot.startsWith(prefix) && !this.invalid.has(id))
+      .map(([, id]) => ({ id, workflow: this.store.get(id)!.content as SkillWorkflow }))
+      .filter(({ workflow }) => appliesTo(workflow, goal));
+  }
+
+  /** Stop trusting a workflow, e.g. after following it ended in failure. */
+  invalidate(id: Hash): boolean {
+    if (this.invalid.has(id) || !this.store.has(id)) return false;
+    this.invalid.add(id);
+    this.stats.invalidated++;
+    return true;
+  }
+
+  snapshot(): WorkflowMemorySnapshot {
+    const ids = new Set([...this.active.values(), ...this.invalid]);
+    return {
+      version: 1,
+      workflows: [...ids].map(id => this.store.get(id)?.content as SkillWorkflow).filter(Boolean),
+      derivations: this.derivations.filter(d => ids.has(d.output)),
+      active: [...this.active.entries()],
+      invalid: [...this.invalid],
+      stats: { ...this.stats },
+    };
+  }
+
+  static restore(
+    snapshot: WorkflowMemorySnapshot,
+    validator: ValidationEngine = new ContractValidationEngine()
+  ): SkillWorkflowMemory {
+    if (snapshot.version !== 1) throw new Error(`Unsupported workflow memory snapshot version ${snapshot.version}`);
+    const memory = new SkillWorkflowMemory(validator);
+    for (const workflow of snapshot.workflows) memory.store.put('skill-workflow', workflow);
+    for (const derivation of snapshot.derivations) memory.record(derivation);
+    for (const [slot, id] of snapshot.active) if (memory.store.has(id)) memory.active.set(slot, id);
+    for (const id of snapshot.invalid) memory.invalid.add(id);
+    memory.stats = { ...snapshot.stats };
+    return memory;
+  }
+
+  private record(derivation: Derivation): void {
+    this.provenance.recordDerivation(derivation);
+    this.derivations.push(derivation);
   }
 
   /**
@@ -165,12 +243,21 @@ export class SkillWorkflowMemory {
         screen: observed.screen,
         step:
           observed.step.action === 'type' && text !== undefined && observed.step.text === text
-            ? { action: 'type', text: '{{text}}' }
+            ? { ...observed.step, text: '{{text}}' }
             : observed.step,
       }));
     const workflow: SkillWorkflow = { skillId: run.skillId, intent: goalIntent(run.goal), steps };
 
     this.stats.proposed++;
+    // Replaying a workflow that types words the goal never asked for would
+    // publish an old post's text under a new request. Typed text must come
+    // from the goal, templated or verbatim.
+    const foreign = steps.find(({ step }) => step.action === 'type' && step.text !== '{{text}}' && !run.goal.includes(step.text ?? ''));
+    if (foreign) {
+      this.stats.rejected++;
+      return { retained: false, reason: 'types text the goal did not ask for' };
+    }
+
     const candidate: CandidateKnowledge = {
       id: `candidate:workflow:${hashContent(workflow)}`,
       version: '1.0.0',
@@ -202,7 +289,7 @@ export class SkillWorkflowMemory {
     }
 
     const node = this.store.put('skill-workflow', workflow, { evidence: run.evidence });
-    this.provenance.recordDerivation({
+    this.record({
       output: node.id,
       step: { kind: 'learn-skill-workflow', defHash: hashContent({ skill: workflow.skillId, version: this.validator.version }) },
       inputs: [...new Set(steps.map(step => step.screen))],
@@ -242,13 +329,21 @@ export class SkillWorkflowMemory {
     const step = expected.step;
     return {
       kind: 'follow',
-      step: step.action === 'type' ? { action: 'type', text: step.text.replace('{{text}}', text) } : step,
+      step: step.action === 'type' ? { ...step, text: (step.text ?? '').replace('{{text}}', text) } : step,
     };
   }
 
   getStats(): WorkflowMemoryStats {
     return { ...this.stats };
   }
+}
+
+/** Whether a workflow's typed text can be produced for this goal. */
+function appliesTo(workflow: SkillWorkflow, goal: string): boolean {
+  return workflow.steps.every(({ step }) => {
+    if (step.action !== 'type') return true;
+    return step.text === '{{text}}' ? goalText(goal) !== undefined : goal.includes(step.text ?? '');
+  });
 }
 
 function key(skillId: string, intent: string, startScreen: Hash): string {
