@@ -16,7 +16,7 @@ export const benchmarkProfiles: Readonly<Record<BenchmarkProfileId, BenchmarkPro
     description: 'Deterministic infrastructure benchmarks safe for CI.',
     deterministic: true,
     includeLiveServices: false,
-    subsystems: ['retrieval', 'compilation', 'replay', 'mutation', 'stability'],
+    subsystems: ['retrieval', 'compilation', 'replay', 'mutation', 'stability', 'skills'],
   },
   nightly: {
     id: 'nightly',
@@ -34,6 +34,7 @@ export const benchmarkProfiles: Readonly<Record<BenchmarkProfileId, BenchmarkPro
       'stability',
       'mutation',
       'context-quality',
+      'skills',
     ],
   },
   research: {
@@ -52,6 +53,7 @@ export const benchmarkProfiles: Readonly<Record<BenchmarkProfileId, BenchmarkPro
       'stability',
       'mutation',
       'context-quality',
+      'skills',
     ],
   },
 };

@@ -11,7 +11,8 @@ export type PealBenchmarkSubsystem =
   | 'replay'
   | 'stability'
   | 'mutation'
-  | 'context-quality';
+  | 'context-quality'
+  | 'skills';
 
 export type BenchmarkCategory = 'infrastructure' | 'agent';
 export type BenchmarkStatus = 'passed' | 'failed' | 'warning';

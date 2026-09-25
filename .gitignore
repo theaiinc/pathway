@@ -2,6 +2,8 @@
 node_modules
 dist
 .nx
+.benchmark-build
+.peal-build
 
 # Written at runtime: the ChromaDB vector store and scratch files
 chroma_data

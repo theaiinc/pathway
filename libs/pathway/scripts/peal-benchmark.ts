@@ -9,6 +9,7 @@ import {
 } from '../src/benchmarks/profiles.js';
 import { futureBenchmarkPlaceholders } from '../src/benchmarks/placeholder-benchmarks.js';
 import { RetrievalBenchmark } from '../src/benchmarks/retrieval-benchmark.js';
+import { SkillBenchmark } from '../src/benchmarks/skills/skill-benchmark.js';
 
 interface CliOptions {
   readonly profile: BenchmarkProfileId;
@@ -16,6 +17,10 @@ interface CliOptions {
   readonly live: boolean;
   readonly json: boolean;
   readonly corpusPath?: string;
+  readonly runs?: number;
+  readonly model?: string;
+  readonly baseUrl?: string;
+  readonly seed?: number;
 }
 
 async function main(): Promise<void> {
@@ -34,6 +39,7 @@ async function main(): Promise<void> {
         profile,
         liveServices: options.live || profile.includeLiveServices,
         outputJson: options.json,
+        seed: options.seed,
       })
     );
   }
@@ -50,6 +56,12 @@ async function main(): Promise<void> {
 function selectBenchmarks(options: CliOptions): Benchmark[] {
   const benchmarks: Benchmark[] = [
     new RetrievalBenchmark({ corpusPath: options.corpusPath }),
+    new SkillBenchmark({
+      runs: options.runs,
+      model: { model: options.model, baseUrl: options.baseUrl },
+      // Live runs take minutes; progress goes to stderr so --json stays parseable.
+      log: line => console.error(`[skills] ${line}`),
+    }),
     ...futureBenchmarkPlaceholders,
   ];
 
@@ -64,6 +76,10 @@ function parseArgs(args: readonly string[]): CliOptions {
   let live = false;
   let json = false;
   let corpusPath: string | undefined;
+  let runs: number | undefined;
+  let model: string | undefined;
+  let baseUrl: string | undefined;
+  let seed: number | undefined;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -79,6 +95,14 @@ function parseArgs(args: readonly string[]): CliOptions {
       json = true;
     } else if (arg === '--corpus') {
       corpusPath = args[++i];
+    } else if (arg === '--runs') {
+      runs = parsePositiveInteger('--runs', args[++i]);
+    } else if (arg === '--model') {
+      model = args[++i];
+    } else if (arg === '--base-url') {
+      baseUrl = args[++i];
+    } else if (arg === '--seed') {
+      seed = parsePositiveInteger('--seed', args[++i]);
     } else if (arg === '--help' || arg === '-h') {
       printHelp();
       process.exit(0);
@@ -87,7 +111,15 @@ function parseArgs(args: readonly string[]): CliOptions {
     }
   }
 
-  return { profile, subsystem, live, json, corpusPath };
+  return { profile, subsystem, live, json, corpusPath, runs, model, baseUrl, seed };
+}
+
+function parsePositiveInteger(flag: string, value: string | undefined): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error(`${flag} needs a positive integer, got ${value || '(missing)'}`);
+  }
+  return parsed;
 }
 
 function parseProfile(value: string | undefined): BenchmarkProfileId {
@@ -109,6 +141,7 @@ function parseSubsystem(value: string | undefined): PealBenchmarkSubsystem {
     'stability',
     'mutation',
     'context-quality',
+    'skills',
   ];
   if (value && subsystems.includes(value as PealBenchmarkSubsystem)) {
     return value as PealBenchmarkSubsystem;
@@ -151,13 +184,19 @@ function printHelp(): void {
   peal benchmark --profile ci
   peal benchmark --profile nightly --live
   peal benchmark --profile ci --subsystem retrieval --json
+  peal benchmark --profile nightly --subsystem skills --runs 5 --model unsloth_Qwen3.5-4B-GGUF
 
 Options:
   --profile <ci|nightly|research>
-  --subsystem <retrieval|compilation|planning|simulation|audit|learning|replay|stability|mutation|context-quality>
+  --subsystem <retrieval|compilation|planning|simulation|audit|learning|replay|stability|mutation|context-quality|skills>
   --live
   --json
-  --corpus <path>`);
+  --corpus <path>
+  --runs <n>          skills: episodes per task per arm in live runs (default 5)
+  --model <id>        skills: model id (default $PATHWAY_SKILLS_MODEL or unsloth_Qwen3.5-4B-GGUF)
+  --base-url <url>    skills: OpenAI-compatible endpoint (default $PATHWAY_SKILLS_BASE_URL or http://127.0.0.1:8790/v1,
+                      where scripts/serve-avalon-model.sh serves)
+  --seed <n>          base seed; runs of every arm share it`);
 }
 
 main().catch(error => {

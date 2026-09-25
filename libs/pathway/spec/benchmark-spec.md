@@ -158,3 +158,63 @@ Regression criteria:
 - Corruption causes an unhandled exception where a diagnostic is expected.
 - A corrupted graph is accepted as valid without a warning.
 - Mutation handling becomes nondeterministic.
+
+## Skills Benchmark
+
+Invariant: a skill must beat its own absence. A skill is a contract (rules the executor
+enforces: when the skill applies, and what must never happen while it runs) joined with a
+pathway (experience of how the task is done). Guidance prose that the model may ignore is
+what a skill is before it has either.
+
+The same tasks run in three arms, with the same seed at the same step in each:
+
+- `no-skill`: the model alone.
+- `prose`: the skill's plan and step guidance injected as Oasis Cognition injects it.
+- `prose+contract`: that prose, with the skill's invariants enforced by the executor.
+
+Tasks run against a local composer fixture (`src/benchmarks/skills/composer-environment.ts`),
+never a live site, because a benchmark that posts to a real account on every run is
+destructive and not reproducible. The fixture reproduces the traps agents fall into: a Close
+button beside a pending draft, "Close friends" in the audience menu, a Post button that stays
+on screen while posting, and a Messenger chat whose "Close chat" is harmless.
+
+Four measurements, because a skill can fail in four independent ways:
+
+- Applicability: does the contract's `appliesWhen` fire on the right goals? Accuracy,
+  precision, recall, false positives and negatives over a labelled goal set.
+- Compliance: invariant violations per episode (executed actions the contract forbids),
+  harmful actions per episode (a discarded draft or a duplicate post), and false refusals per
+  episode (harmless actions the contract refused, which measure over-strictness).
+- Efficacy: success rate, steps, tokens, model calls and wall clock, each compared across
+  arms.
+- Learning: success and steps across repeated runs. Not measured until skills are backed by
+  a pathway; prose and contracts do not change between runs.
+
+Profiles:
+
+- `ci` replays scripted trajectories, each a known mistake, and asserts the fixture, contract
+  and scoring report it exactly. This checks the instrument, not the model, and says nothing
+  about whether a skill helps. Trajectories marked `knownGap` pin a contract defect, so that
+  fixing it shows up as an expectation to update.
+- `nightly` runs a real model through every task in every arm, `--runs` times. Arms are
+  interleaved within each run so drift lands on all of them alike.
+
+Comparisons (`prose` and `prose+contract` against `no-skill`, and `prose+contract` against
+`prose`) report the success-rate difference with a Newcombe 95% interval. A difference whose
+interval contains zero is `warning`: the skill costs context and has not shown a benefit. A
+significantly positive difference is `passed`; a significantly negative one is `failed`.
+
+Model endpoint: any OpenAI-compatible chat completions API, from `--base-url` or
+`PATHWAY_SKILLS_BASE_URL`, and `--model` or `PATHWAY_SKILLS_MODEL`. Reasoning models should
+be served with thinking off, or each step spends its token budget thinking.
+`scripts/serve-avalon-model.sh` serves a model downloaded by Avalon that way, on the default
+endpoint.
+
+Recorded baselines live in `benchmarks/skills/baselines/`, one file per model, as the full
+`--json` output including every episode's trace.
+
+Regression criteria:
+
+- A scripted trajectory is measured differently from its expectation.
+- A comparison that was `passed` becomes `warning` or `failed` for the same model and corpus.
+- False refusals rise: the contract has become stricter than the task allows.
