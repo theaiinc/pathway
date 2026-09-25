@@ -1,6 +1,6 @@
 {
   "id": "skills-facebook-compose",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Paired benchmark for the Oasis Cognition facebook-compose-post skill on a local composer fixture: no skill, prose, prose + contract, and contract + learned pathway.",
   "skill": {
     "id": "facebook-compose-post",
@@ -14,6 +14,9 @@
         },
         {
           "kind": "submit_once"
+        },
+        {
+          "kind": "no_unrequested_deletion"
         }
       ]
     },
@@ -92,6 +95,155 @@
     ],
     "runs": 3
   },
+  "demonstrations": [
+    {
+      "taskId": "basic-post",
+      "actions": [
+        {
+          "action": "click",
+          "target": "What's on your mind, Alex?"
+        },
+        {
+          "action": "type",
+          "text": "Shipping v2.4 today. Thanks to everyone who tested the beta!"
+        },
+        {
+          "action": "click",
+          "target": "Post"
+        },
+        {
+          "action": "wait"
+        },
+        {
+          "action": "done"
+        }
+      ]
+    },
+    {
+      "taskId": "close-friends-post",
+      "actions": [
+        {
+          "action": "click",
+          "target": "What's on your mind, Alex?"
+        },
+        {
+          "action": "type",
+          "text": "Dinner at ours on Saturday, 7pm."
+        },
+        {
+          "action": "click",
+          "target": "Audience: Friends"
+        },
+        {
+          "action": "click",
+          "target": "Close friends"
+        },
+        {
+          "action": "click",
+          "target": "Done"
+        },
+        {
+          "action": "click",
+          "target": "Post"
+        },
+        {
+          "action": "wait"
+        },
+        {
+          "action": "done"
+        }
+      ]
+    },
+    {
+      "taskId": "chat-then-post",
+      "actions": [
+        {
+          "action": "click",
+          "target": "Close chat"
+        },
+        {
+          "action": "click",
+          "target": "What's on your mind, Alex?"
+        },
+        {
+          "action": "type",
+          "text": "Out of office until Monday."
+        },
+        {
+          "action": "click",
+          "target": "Post"
+        },
+        {
+          "action": "wait"
+        },
+        {
+          "action": "done"
+        }
+      ]
+    },
+    {
+      "taskId": "noisy-post",
+      "actions": [
+        {
+          "action": "click",
+          "target": "What's on your mind, Alex?"
+        },
+        {
+          "action": "click",
+          "target": "Not now"
+        },
+        {
+          "action": "type",
+          "text": "Team lunch moved to 1pm today."
+        },
+        {
+          "action": "click",
+          "target": "Post"
+        },
+        {
+          "action": "wait"
+        },
+        {
+          "action": "done"
+        }
+      ]
+    },
+    {
+      "taskId": "noisy-close-friends-post",
+      "actions": [
+        {
+          "action": "click",
+          "target": "What's on your mind, Alex?"
+        },
+        {
+          "action": "type",
+          "text": "Photos from the hike are up, ask me for the link."
+        },
+        {
+          "action": "click",
+          "target": "Audience: Friends"
+        },
+        {
+          "action": "click",
+          "target": "Close friends"
+        },
+        {
+          "action": "click",
+          "target": "Done"
+        },
+        {
+          "action": "click",
+          "target": "Post"
+        },
+        {
+          "action": "wait"
+        },
+        {
+          "action": "done"
+        }
+      ]
+    }
+  ],
   "applicability": [
     {
       "id": "compose-quoted",

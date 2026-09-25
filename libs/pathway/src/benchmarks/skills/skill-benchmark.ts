@@ -68,6 +68,12 @@ export interface SkillBenchmarkCorpus {
    * only: a learned workflow must notice the page changed.
    */
   readonly redesign?: { readonly taskIds: readonly string[]; readonly runs: number };
+  /**
+   * A correct run of each task, as a person would show it. Seeds the
+   * contract+pathway+demo arm, and is checked in ci: a demonstration must
+   * succeed and pass the contract to be retained, like any other run.
+   */
+  readonly demonstrations?: readonly { readonly taskId: string; readonly actions: readonly AgentAction[] }[];
   readonly trajectories: readonly {
     readonly id: string;
     readonly taskId: string;
@@ -97,12 +103,13 @@ export interface SkillBenchmarkOptions {
 }
 
 const benchmarkVersion = '1.0.0';
-const ARM_ORDER: readonly ArmId[] = ['no-skill', 'prose', 'prose+contract', 'contract+pathway'];
+const ARM_ORDER: readonly ArmId[] = ['no-skill', 'prose', 'prose+contract', 'contract+pathway', 'contract+pathway+demo'];
+const PATHWAY_ARMS: readonly ArmId[] = ['contract+pathway', 'contract+pathway+demo'];
 export const SKILL_BENCHMARK_ARMS = ARM_ORDER;
 const MAX_CONSECUTIVE_ERRORS = 5;
 
 export class SkillBenchmark implements Benchmark {
-  readonly id = 'peal.skills.v1';
+  readonly id = 'peal.skills.v2';
   readonly subsystem = 'skills' as const;
   readonly category = 'agent' as const;
 
@@ -134,14 +141,21 @@ export class SkillBenchmark implements Benchmark {
       };
     } else {
       const outcome = await runTrajectories(corpus, this.maxSteps());
-      const pathway = await runPathwayCases(corpus, this.maxSteps());
-      cases = [...applicability.cases, ...outcome.cases, ...pathway.cases];
-      metrics = { ...applicability.metrics, ...outcome.metrics, ...pathway.metrics };
+      // The pathway machinery cases are written against the compose tasks.
+      const pathway = corpus.tasks.some(task => task.id === 'basic-post')
+        ? await runPathwayCases(corpus, this.maxSteps())
+        : { cases: [], metrics: {} };
+      const demonstrations = await seedDemonstrations(corpus, new SkillWorkflowMemory(), this.maxSteps());
+      const replay = await replayDemonstrations(corpus, this.maxSteps());
+      cases = [...applicability.cases, ...outcome.cases, ...pathway.cases, ...demonstrations.cases, ...replay.cases];
+      metrics = {
+        ...applicability.metrics, ...outcome.metrics, ...pathway.metrics, ...demonstrations.metrics, ...replay.metrics,
+      };
       runtime = { mode: 'scripted' };
     }
 
     return {
-      benchmarkId: this.id,
+      benchmarkId: `${this.id}:${corpus.skill.id}`,
       subsystem: this.subsystem,
       category: this.category,
       status: summarizeCaseStatus(cases),
@@ -178,15 +192,25 @@ export class SkillBenchmark implements Benchmark {
     context: BenchmarkRunContext,
     agent: Agent
   ): Promise<{ cases: BenchmarkCaseResult[]; metrics: Record<string, number> }> {
+    // Every skill arm shows the model only the skill's plan guidance, which is
+    // all Oasis gives it in production: plan guidance goes into the planning
+    // prompt, and the per-step prose (react guidance) is never injected.
+    const planOnly = { plan: corpus.skill.guidance.plan, react: '' };
     const arms: Record<ArmId, Arm> = {
       'no-skill': { id: 'no-skill', enforce: false },
-      prose: { id: 'prose', guidance: corpus.skill.guidance, enforce: false },
-      'prose+contract': { id: 'prose+contract', guidance: corpus.skill.guidance, enforce: true },
-      // The model sees plan guidance only; the workflow replaces the step prose.
-      'contract+pathway': { id: 'contract+pathway', guidance: corpus.skill.guidance, enforce: true },
+      prose: { id: 'prose', guidance: planOnly, enforce: false },
+      'prose+contract': { id: 'prose+contract', guidance: planOnly, enforce: true },
+      'contract+pathway': { id: 'contract+pathway', guidance: planOnly, enforce: true },
+      'contract+pathway+demo': { id: 'contract+pathway+demo', guidance: planOnly, enforce: true },
     };
     const armOrder = this.armOrder();
-    const memory = new SkillWorkflowMemory();
+    const memories: Partial<Record<ArmId, SkillWorkflowMemory>> = {
+      'contract+pathway': new SkillWorkflowMemory(),
+      'contract+pathway+demo': new SkillWorkflowMemory(),
+    };
+    const seeded = armOrder.includes('contract+pathway+demo')
+      ? await seedDemonstrations(corpus, memories['contract+pathway+demo']!, this.maxSteps())
+      : { cases: [], metrics: {} };
     const log = this.options.log ?? (() => undefined);
     const episodes: EpisodeResult[] = [];
     const redesignEpisodes: EpisodeResult[] = [];
@@ -194,17 +218,19 @@ export class SkillBenchmark implements Benchmark {
     const errors: { taskId: string; arm: ArmId; run: number; message: string }[] = [];
     const baseSeed = context.seed ?? 1;
     const redesignTasks = redesignedTasks(corpus);
-    const redesignRuns = armOrder.includes('contract+pathway') ? corpus.redesign?.runs ?? 0 : 0;
-    const total = this.runs() * corpus.tasks.length * armOrder.length + redesignRuns * redesignTasks.length;
+    const redesignArms = armOrder.filter(arm => PATHWAY_ARMS.includes(arm));
+    const redesignRuns = redesignArms.length ? corpus.redesign?.runs ?? 0 : 0;
+    const total =
+      this.runs() * corpus.tasks.length * armOrder.length + redesignRuns * redesignTasks.length * redesignArms.length;
     let consecutiveErrors = 0;
     let stoppedEarly: string | undefined;
 
     const attempt = async (task: ComposerTaskFixture, armId: ArmId, run: number, into: EpisodeResult[]) => {
       const label = `${episodes.length + redesignEpisodes.length + errors.length + 1}/${total} ${task.id} ${armId} run ${run + 1}`;
-      const pathwayAgent =
-        armId === 'contract+pathway'
-          ? new PathwayAgent(agent, { memory, skillId: corpus.skill.id, guidance: corpus.skill.guidance })
-          : undefined;
+      const memory = memories[armId];
+      const pathwayAgent = memory
+        ? new PathwayAgent(agent, { memory, skillId: corpus.skill.id, guidance: planOnly })
+        : undefined;
       try {
         const episode = await runEpisode({
           task,
@@ -218,7 +244,7 @@ export class SkillBenchmark implements Benchmark {
         into.push(episode);
         consecutiveErrors = 0;
         let learned = '';
-        if (pathwayAgent) {
+        if (pathwayAgent && memory) {
           invalidationsByEpisode.set(episode, pathwayAgent.invalidations);
           const retention = memory.learn(toRunReport(corpus.skill.id, task.goal, episode));
           learned =
@@ -265,11 +291,14 @@ export class SkillBenchmark implements Benchmark {
     // Then the page changes under the learned workflows.
     redesign: for (let run = 0; run < redesignRuns && !stoppedEarly; run++) {
       for (const task of redesignTasks) {
-        if (!(await attempt(task, 'contract+pathway', run, redesignEpisodes))) break redesign;
+        for (const armId of redesignArms) {
+          if (!(await attempt(task, armId, run, redesignEpisodes))) break redesign;
+        }
       }
     }
 
-    return summarizeLive(corpus, armOrder, episodes, redesignEpisodes, invalidationsByEpisode, errors, stoppedEarly);
+    const summary = summarizeLive(corpus, armOrder, episodes, redesignEpisodes, invalidationsByEpisode, errors, stoppedEarly);
+    return { cases: [...seeded.cases, ...summary.cases], metrics: { ...seeded.metrics, ...summary.metrics } };
   }
 }
 
@@ -542,6 +571,8 @@ function summarizeLive(
       ['prose+contract', 'prose'],
       ['contract+pathway', 'no-skill'],
       ['contract+pathway', 'prose+contract'],
+      ['contract+pathway+demo', 'no-skill'],
+      ['contract+pathway+demo', 'contract+pathway'],
     ] as [ArmId, ArmId][]
   ).filter(([a, b]) => byArm.has(a) && byArm.has(b));
   for (const [treatment, baseline] of comparisons) {
@@ -590,16 +621,19 @@ function summarizeLive(
     });
   }
 
-  const pathway = episodes.filter(episode => episode.arm === 'contract+pathway');
-  if (pathway.length) {
-    const learning = summarizeLearning(pathway);
-    cases.push(learning.case);
-    Object.assign(metrics, learning.metrics);
-  }
-  if (redesignEpisodes.length) {
-    const redesign = summarizeRedesign(redesignEpisodes, invalidationsByEpisode);
-    cases.push(redesign.case);
-    Object.assign(metrics, redesign.metrics);
+  for (const armId of PATHWAY_ARMS) {
+    const pathway = episodes.filter(episode => episode.arm === armId);
+    if (pathway.length) {
+      const learning = summarizeLearning(pathway, armId);
+      cases.push(learning.case);
+      Object.assign(metrics, learning.metrics);
+    }
+    const redesigned = redesignEpisodes.filter(episode => episode.arm === armId);
+    if (redesigned.length) {
+      const redesign = summarizeRedesign(redesigned, invalidationsByEpisode, armId);
+      cases.push(redesign.case);
+      Object.assign(metrics, redesign.metrics);
+    }
   }
 
   if (errors.length) {
@@ -631,7 +665,7 @@ function formatSigned(value: number, digits = 2): string {
  * Does repeated exposure make the skill better? Success, steps and model
  * calls by run: run 1 has nothing learned, run n has runs 1..n-1 behind it.
  */
-function summarizeLearning(episodes: readonly EpisodeResult[]): {
+function summarizeLearning(episodes: readonly EpisodeResult[], armId: ArmId): {
   case: BenchmarkCaseResult;
   metrics: Record<string, number>;
 } {
@@ -653,7 +687,7 @@ function summarizeLearning(episodes: readonly EpisodeResult[]): {
   const improved = later.length > 0 && calls.high < 0;
   return {
     case: {
-      id: 'learning/contract+pathway',
+      id: `learning/${armId}`,
       status: improved ? 'passed' : 'warning',
       metrics: { modelCallsDelta: calls.estimate, stepsDelta: steps.estimate },
       actual: curve,
@@ -664,13 +698,13 @@ function summarizeLearning(episodes: readonly EpisodeResult[]): {
       durationMs: 0,
     },
     metrics: {
-      'learning.run1.successRate': curve[0].successRate,
-      'learning.run1.meanModelCalls': curve[0].meanModelCalls,
-      'learning.run1.meanSteps': curve[0].meanSteps,
-      'learning.later.successRate': mean(later.map(e => (e.outcome.success ? 1 : 0))),
-      'learning.later.meanModelCalls': mean(later.map(e => e.modelCalls)),
-      'learning.later.meanSteps': mean(later.map(e => e.steps)),
-      'learning.later.pathwayShare': mean(later.map(e => (e.steps ? e.pathwaySteps / e.steps : 0))),
+      [`learning.${armId}.run1.successRate`]: curve[0].successRate,
+      [`learning.${armId}.run1.meanModelCalls`]: curve[0].meanModelCalls,
+      [`learning.${armId}.run1.meanSteps`]: curve[0].meanSteps,
+      [`learning.${armId}.later.successRate`]: mean(later.map(e => (e.outcome.success ? 1 : 0))),
+      [`learning.${armId}.later.meanModelCalls`]: mean(later.map(e => e.modelCalls)),
+      [`learning.${armId}.later.meanSteps`]: mean(later.map(e => e.steps)),
+      [`learning.${armId}.later.pathwayShare`]: mean(later.map(e => (e.steps ? e.pathwaySteps / e.steps : 0))),
     },
   };
 }
@@ -681,14 +715,15 @@ function summarizeLearning(episodes: readonly EpisodeResult[]): {
  */
 function summarizeRedesign(
   episodes: readonly EpisodeResult[],
-  invalidationsByEpisode: ReadonlyMap<EpisodeResult, number>
+  invalidationsByEpisode: ReadonlyMap<EpisodeResult, number>,
+  armId: ArmId
 ): { case: BenchmarkCaseResult; metrics: Record<string, number> } {
   const stale = episodes.reduce((sum, e) => sum + e.stalePathwaySteps, 0);
   const invalidations = episodes.reduce((sum, e) => sum + (invalidationsByEpisode.get(e) ?? 0), 0);
   const successRate = mean(episodes.map(e => (e.outcome.success ? 1 : 0)));
   return {
     case: {
-      id: 'redesign/contract+pathway',
+      id: `redesign/${armId}`,
       status: stale === 0 ? 'passed' : 'failed',
       metrics: { stalePathwaySteps: stale, invalidations, successRate },
       actual: episodes.map(e => ({
@@ -707,11 +742,101 @@ function summarizeRedesign(
       durationMs: episodes.reduce((sum, e) => sum + e.wallClockMs, 0),
     },
     metrics: {
-      'redesign.episodes': episodes.length,
-      'redesign.invalidations': invalidations,
-      'redesign.stalePathwaySteps': stale,
-      'redesign.successRate': successRate,
-      'redesign.meanModelCalls': mean(episodes.map(e => e.modelCalls)),
+      [`redesign.${armId}.episodes`]: episodes.length,
+      [`redesign.${armId}.invalidations`]: invalidations,
+      [`redesign.${armId}.stalePathwaySteps`]: stale,
+      [`redesign.${armId}.successRate`]: successRate,
+      [`redesign.${armId}.meanModelCalls`]: mean(episodes.map(e => e.modelCalls)),
     },
+  };
+}
+
+/**
+ * Runs each demonstration through the fixture under the enforced contract and
+ * offers it to the memory, as a person showing the task once would. A
+ * demonstration that fails or breaks the contract is not retained.
+ */
+export async function seedDemonstrations(
+  corpus: SkillBenchmarkCorpus,
+  memory: SkillWorkflowMemory,
+  maxSteps: number
+): Promise<{ cases: BenchmarkCaseResult[]; metrics: Record<string, number> }> {
+  const tasks = new Map(corpus.tasks.map(task => [task.id, task]));
+  const cases: BenchmarkCaseResult[] = [];
+  let retained = 0;
+  // Demonstrations of tasks a filtered corpus left out are skipped.
+  for (const demonstration of (corpus.demonstrations ?? []).filter(d => tasks.has(d.taskId))) {
+    const task = tasks.get(demonstration.taskId)!;
+    const startedAt = Date.now();
+    const episode = await runEpisode({
+      task,
+      agent: new ScriptedAgent(demonstration.actions),
+      arm: { id: 'contract+pathway+demo', enforce: true },
+      invariants: corpus.skill.contract.invariants,
+      run: 0,
+      seed: 0,
+      maxSteps: Math.max(maxSteps, demonstration.actions.length + 1),
+    });
+    const retention = memory.learn(toRunReport(corpus.skill.id, task.goal, episode));
+    if (retention.retained) retained++;
+    // Covered either by this demonstration or by an earlier one of the same
+    // intent, whose slots fill in this task's own values.
+    const covered = memory.recall(corpus.skill.id, task.goal, episode.trace[0]?.screen ?? '') !== null;
+    cases.push({
+      id: `demonstration/${task.id}`,
+      status: episode.outcome.success && covered ? 'passed' : 'failed',
+      metrics: { success: episode.outcome.success ? 1 : 0, retained: retention.retained ? 1 : 0 },
+      message: !episode.outcome.success
+        ? `demonstration failed: ${episode.outcome.reasons.join('; ')}`
+        : retention.retained
+          ? `retained: ${retention.reason}`
+          : `covered by an earlier demonstration of the same intent (${retention.reason})`,
+      durationMs: Date.now() - startedAt,
+    });
+  }
+  return {
+    cases,
+    metrics: { 'demonstrations.total': corpus.demonstrations?.length ?? 0, 'demonstrations.retained': retained },
+  };
+}
+
+/**
+ * With only the demonstrations learned, every task must be done by following
+ * a workflow, without a single model decision (the model here would only say
+ * done). Checks templating: one demonstration covers every task of its intent.
+ */
+export async function replayDemonstrations(
+  corpus: SkillBenchmarkCorpus,
+  maxSteps: number
+): Promise<{ cases: BenchmarkCaseResult[]; metrics: Record<string, number> }> {
+  if (!corpus.demonstrations?.length) return { cases: [], metrics: {} };
+  const memory = new SkillWorkflowMemory();
+  await seedDemonstrations(corpus, memory, maxSteps);
+  const cases: BenchmarkCaseResult[] = [];
+  for (const task of corpus.tasks) {
+    const startedAt = Date.now();
+    const episode = await runEpisode({
+      task,
+      agent: new PathwayAgent(new ScriptedAgent([]), { memory, skillId: corpus.skill.id }),
+      arm: { id: 'contract+pathway+demo', enforce: true },
+      invariants: corpus.skill.contract.invariants,
+      run: 0,
+      seed: 0,
+      maxSteps,
+    });
+    const followed = episode.pathwaySteps === episode.steps;
+    cases.push({
+      id: `demonstration-replay/${task.id}`,
+      status: episode.outcome.success && followed ? 'passed' : 'failed',
+      metrics: { pathwaySteps: episode.pathwaySteps, steps: episode.steps },
+      message: episode.outcome.success
+        ? `${episode.pathwaySteps}/${episode.steps} steps from the workflow`
+        : `failed: ${episode.outcome.reasons.join('; ')}`,
+      durationMs: Date.now() - startedAt,
+    });
+  }
+  return {
+    cases,
+    metrics: { 'demonstrationReplay.passed': cases.filter(item => item.status === 'passed').length },
   };
 }

@@ -4,16 +4,17 @@ import {
   Invariant,
   SkillGuidance,
 } from '../../skills/contract.js';
-import { screenHash } from '../../skills/workflow-memory.js';
+import { goalSlots, screenHash } from '../../skills/workflow-memory.js';
 import type { Agent, HistoryEntry } from './agents.js';
 import {
   AgentAction,
   ComposerEnvironment,
   ComposerTaskFixture,
   EpisodeOutcome,
+  ScreenElement,
 } from './composer-environment.js';
 
-export type ArmId = 'no-skill' | 'prose' | 'prose+contract' | 'contract+pathway';
+export type ArmId = 'no-skill' | 'prose' | 'prose+contract' | 'contract+pathway' | 'contract+pathway+demo';
 
 /** What differs between arms: the prose the model sees, and what the executor enforces. */
 export interface Arm {
@@ -32,6 +33,12 @@ export interface EpisodeTraceStep {
   /** False for refused, unparseable and no-effect actions: not part of what worked. */
   readonly effective: boolean;
   readonly source: 'model' | 'pathway';
+  /**
+   * What actually ran, normalized: a click by index or partial label becomes
+   * the control's label, with an anchor when the label is not unique on the
+   * screen. This is what a workflow learns, so it replays on the same control.
+   */
+  readonly executed?: AgentAction;
 }
 
 export interface EpisodeResult {
@@ -135,8 +142,10 @@ export async function runEpisode(options: EpisodeOptions): Promise<EpisodeResult
     // The executor knows what it is about to click, so the contract judges the
     // resolved element rather than however the model spelled it. A click on
     // nothing is a no-op the contract has no reason to judge.
-    const resolved = action.action === 'click' ? env.resolveTarget(action.target) : null;
+    const entry = action.action === 'click' ? env.resolveEntry(action.target, action.anchor) : null;
+    const resolved = entry?.label ?? null;
     const target = resolved ?? (action.action === 'click' ? action.target : '');
+    const executed = normalizeAction(action, entry, env, task.goal);
     const violation =
       action.action === 'click' && !resolved
         ? null
@@ -155,7 +164,7 @@ export async function runEpisode(options: EpisodeOptions): Promise<EpisodeResult
       contractSteps.push(toContractStep(action, target, 'refused'));
       trace.push({
         action, output: violation.message, refused: true, violation: violation.invariant,
-        screen, effective: false, source,
+        screen, effective: false, source, executed,
       });
       continue;
     }
@@ -169,7 +178,7 @@ export async function runEpisode(options: EpisodeOptions): Promise<EpisodeResult
     if (source === 'pathway' && !effective) stalePathwaySteps++;
     trace.push({
       action, output: result.output, refused: false, violation: violation?.invariant,
-      screen, effective, source,
+      screen, effective, source, executed,
     });
   }
 
@@ -195,6 +204,26 @@ export async function runEpisode(options: EpisodeOptions): Promise<EpisodeResult
     wallClockMs: Date.now() - startedAt,
     trace,
   };
+}
+
+/**
+ * The action as the executor carried it out. For a click on a control whose
+ * label repeats on screen, the anchor is the goal's own words for that post
+ * when they appear in it (so a learned workflow generalizes), otherwise the
+ * start of the post.
+ */
+function normalizeAction(
+  action: AgentAction,
+  entry: ScreenElement | null,
+  env: ComposerEnvironment,
+  goal: string
+): AgentAction {
+  if (action.action !== 'click' || !entry) return action;
+  const shared = env.entries().filter(other => other.label === entry.label).length > 1;
+  if (!shared || !entry.context) return { action: 'click', target: entry.label };
+  const context = entry.context.toLowerCase();
+  const slot = goalSlots(goal).find(value => context.includes(value.toLowerCase()));
+  return { action: 'click', target: entry.label, anchor: slot ?? entry.context.slice(0, 40) };
 }
 
 function toContractStep(action: AgentAction, target: string, status: ContractStep['status']): ContractStep {

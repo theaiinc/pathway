@@ -26,7 +26,13 @@ export type Invariant =
    * Refuse a second submit of the same input. A submit that has not visibly
    * finished yet tempts an agent to click it again, which publishes twice.
    */
-  | { readonly kind: 'submit_once'; readonly minInputLength?: number };
+  | { readonly kind: 'submit_once'; readonly minInputLength?: number }
+  /**
+   * Refuse deleting anything the goal did not ask to delete. Deletion is the
+   * one action a skill's prose ("never click Delete") guarded that nothing
+   * could undo.
+   */
+  | { readonly kind: 'no_unrequested_deletion' };
 
 export type InvariantKind = Invariant['kind'];
 
@@ -118,6 +124,12 @@ const PUBLISH_TARGET = /^(post|publish|share|send|submit|tweet)(\s+(now|button|p
 /** A goal that asks for the input to be thrown away. */
 const GOAL_REQUESTS_DISCARD =
   /\b(discard|throw away|delete|cancel|abandon|scrap)\b.{0,40}\b(draft|post|message|input|changes|text)\b|\bwithout (posting|publishing|sending|saving)\b|\bdon'?t (post|publish|send|save)\b/i;
+
+/** Controls that delete: "Delete", "Delete post", "Move to trash", "Xóa bài viết". */
+const DELETE_TARGET = /^(delete|remove|trash|xóa|xoá)(\s|$)|\bmove to (trash|bin)\b/i;
+
+/** A goal that asks for something to be deleted. */
+const GOAL_REQUESTS_DELETION = /\b(delete|remove|trash|erase)\b|xóa|xoá/i;
 
 const DEFAULT_MIN_DRAFT_LENGTH = 10;
 
@@ -225,6 +237,17 @@ function checkSubmitOnce(
   return null;
 }
 
+function checkNoUnrequestedDeletion(context: InvariantContext): InvariantViolation | null {
+  if (context.action !== 'click' || !DELETE_TARGET.test(context.target.trim())) return null;
+  if (context.goal && GOAL_REQUESTS_DELETION.test(context.goal)) return null;
+  return {
+    invariant: 'no_unrequested_deletion',
+    message:
+      `REFUSED to click "${context.target}": it deletes something, and the goal does not ask for a deletion. ` +
+      `Deleting cannot be undone. Choose the control that does what the goal asks, such as "Edit post".`,
+  };
+}
+
 function normalizeInput(text: string): string {
   return text.trim().replace(/\s+/g, ' ').toLowerCase();
 }
@@ -241,7 +264,9 @@ export function checkInvariants(
     const violation =
       invariant.kind === 'protect_uncommitted_input'
         ? checkProtectUncommittedInput(invariant, context)
-        : checkSubmitOnce(invariant, context);
+        : invariant.kind === 'submit_once'
+          ? checkSubmitOnce(invariant, context)
+          : checkNoUnrequestedDeletion(context);
     if (violation) return violation;
   }
   return null;

@@ -1,6 +1,6 @@
 {
   "name": "@theaiinc/pathway",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Pathway: case-based workflow reasoning with the PEAL runtime, and skills as contract plus learned pathway.",
   "type": "commonjs",
   "license": "MIT",

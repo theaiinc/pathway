@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { hashContent } from '../src/cas/hash.js';
-import { RunReport, screenHash, SkillWorkflowMemory } from '../src/skills/workflow-memory.js';
+import { goalIntent, goalSlots, RunReport, screenHash, SkillWorkflowMemory } from '../src/skills/workflow-memory.js';
 
 const FEED = hashContent('feed');
 const COMPOSER = hashContent('composer');
@@ -31,7 +31,7 @@ describe('SkillWorkflowMemory', () => {
     const recalled = memory.recall('compose', 'Post "Something else entirely" on Facebook.', FEED);
     expect(recalled?.workflow.steps.map(step => step.step)).toEqual([
       { action: 'click', target: 'Open composer' },
-      { action: 'type', text: '{{text}}' },
+      { action: 'type', text: '{{1}}' },
       { action: 'click', target: 'Post' },
     ]);
   });
@@ -139,5 +139,58 @@ describe('SkillWorkflowMemory for live executors', () => {
     const { id } = memory.recall('compose', GOAL, FEED)!;
     expect(memory.invalidate(id)).toBe(true);
     expect(memory.recall('compose', GOAL, FEED)).toBeNull();
+  });
+});
+
+describe('goal slots', () => {
+  const EDIT = 'Edit my Facebook post that starts with "Shipping v2.3" so it says "Shipping v2.4 today"';
+
+  it('abstracts every quoted value, in order', () => {
+    expect(goalSlots(EDIT)).toEqual(['Shipping v2.3', 'Shipping v2.4 today']);
+    expect(goalIntent(EDIT)).toBe('Edit my Facebook post that starts with "{{1}}" so it says "{{2}}"');
+  });
+
+  it('templates anchors as well as typed text, and fills both for a new goal', () => {
+    const memory = new SkillWorkflowMemory();
+    memory.learn(run({
+      goal: EDIT,
+      steps: [
+        { step: { action: 'click', target: 'Actions for this post', anchor: 'Shipping v2.3' }, screen: FEED, effective: true },
+        { step: { action: 'type', text: 'Shipping v2.4 today' }, screen: COMPOSER, effective: true },
+      ],
+    }));
+    const other = 'Edit my Facebook post that starts with "Team lunch" so it says "Lunch is on Friday"';
+    const { id } = memory.recall('compose', other, FEED)!;
+    expect(memory.check(id, 0, FEED, other)).toEqual({ kind: 'follow', step: { action: 'click', target: 'Actions for this post', anchor: 'Team lunch' } });
+    expect(memory.check(id, 1, COMPOSER, other)).toEqual({ kind: 'follow', step: { action: 'type', text: 'Lunch is on Friday' } });
+    // A goal that supplies fewer values than the workflow needs gets nothing.
+    expect(memory.recall('compose', 'Edit my Facebook post that starts with "Team lunch"', FEED)).toBeNull();
+  });
+
+  it('still fills {{text}} from workflows saved before slots were numbered', () => {
+    // A 0.1 snapshot: the workflow says {{text}}, and its id is its own hash.
+    const workflow = {
+      skillId: 'compose',
+      intent: 'Post "{{text}}" on Facebook',
+      steps: [
+        { step: { action: 'click', target: 'Open composer' }, screen: FEED },
+        { step: { action: 'type', text: '{{text}}' }, screen: COMPOSER },
+      ],
+    };
+    const id = hashContent(workflow);
+    const restored = SkillWorkflowMemory.restore({
+      version: 1,
+      workflows: [workflow],
+      derivations: [{ output: id, step: { kind: 'learn-skill-workflow', defHash: hashContent('v') }, inputs: [FEED, COMPOSER], at: 0 }],
+      active: [[`compose\nPost "{{text}}" on Facebook\n${FEED}`, id]],
+      invalid: [],
+      stats: { proposed: 1, retained: 1, rejected: 0, invalidated: 0 },
+    });
+    const goal = 'Post "Something new to say" on Facebook';
+    const [candidate] = restored.candidates('compose', goal);
+    expect(restored.check(candidate.id, 1, COMPOSER, goal)).toEqual({
+      kind: 'follow',
+      step: { action: 'type', text: 'Something new to say' },
+    });
   });
 });

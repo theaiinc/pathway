@@ -10,7 +10,20 @@ import {
 import { futureBenchmarkPlaceholders } from '../src/benchmarks/placeholder-benchmarks.js';
 import { RetrievalBenchmark } from '../src/benchmarks/retrieval-benchmark.js';
 import { ArmId } from '../src/benchmarks/skills/episode.js';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { SKILL_BENCHMARK_ARMS, SkillBenchmark } from '../src/benchmarks/skills/skill-benchmark.js';
+
+/** Skills corpora, one per skill; SKILLS_CORPUS narrows to one file name (without .json). */
+function skillCorpora(): string[] {
+  const dir = path.join(process.cwd(), 'benchmarks', 'skills', 'goldens');
+  const only = process.env.SKILLS_CORPUS;
+  return fs
+    .readdirSync(dir)
+    .filter(file => file.endsWith('.json') && (!only || file === `${only}.json`))
+    .sort()
+    .map(file => path.join(dir, file));
+}
 
 interface CliOptions {
   readonly profile: BenchmarkProfileId;
@@ -58,13 +71,18 @@ async function main(): Promise<void> {
 function selectBenchmarks(options: CliOptions): Benchmark[] {
   const benchmarks: Benchmark[] = [
     new RetrievalBenchmark({ corpusPath: options.corpusPath }),
-    new SkillBenchmark({
-      runs: options.runs,
-      arms: options.arms,
-      model: { model: options.model, baseUrl: options.baseUrl },
-      // Live runs take minutes; progress goes to stderr so --json stays parseable.
-      log: line => console.error(`[skills] ${line}`),
-    }),
+    // One per skill corpus in benchmarks/skills/goldens.
+    ...skillCorpora().map(
+      corpusPath =>
+        new SkillBenchmark({
+          corpusPath,
+          runs: options.runs,
+          arms: options.arms,
+          model: { model: options.model, baseUrl: options.baseUrl },
+          // Live runs take minutes; progress goes to stderr so --json stays parseable.
+          log: line => console.error(`[skills:${path.basename(corpusPath, '.json')}] ${line}`),
+        })
+    ),
     ...futureBenchmarkPlaceholders,
   ];
 

@@ -92,3 +92,22 @@ describe('protect_uncommitted_input gaps, fixed in step with Oasis', () => {
     expect(checkInvariants(ALL, { action: 'click', target: 'Discard', recentSteps: draft, goal: 'Discard my draft' })).toBeNull();
   });
 });
+
+describe('no_unrequested_deletion', () => {
+  const rules: readonly Invariant[] = [{ kind: 'no_unrequested_deletion' }];
+  const deleting = (target: string, goal: string) => checkInvariants(rules, { action: 'click', target, recentSteps: [], goal });
+
+  it.each(['Delete', 'Delete post', 'Move to trash', 'Xóa bài viết', 'Remove'])('refuses %s when the goal is an edit', target => {
+    expect(deleting(target, 'Edit my Facebook post that starts with "Shipping"')?.invariant).toBe('no_unrequested_deletion');
+  });
+
+  it('allows it when the goal asks for a deletion', () => {
+    expect(deleting('Delete post', 'Delete my Facebook post that starts with "Shipping"')).toBeNull();
+    expect(deleting('Xóa bài viết', 'Xóa bài viết mới nhất trên Facebook')).toBeNull();
+  });
+
+  it('leaves other controls alone', () => {
+    expect(deleting('Edit post', 'Edit my post')).toBeNull();
+    expect(deleting('Deleted items', 'Edit my post')).toBeNull();
+  });
+});

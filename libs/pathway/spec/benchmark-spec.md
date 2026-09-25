@@ -166,14 +166,19 @@ enforces: when the skill applies, and what must never happen while it runs) join
 pathway (experience of how the task is done). Guidance prose that the model may ignore is
 what a skill is before it has either.
 
-The same tasks run in four arms, with the same seed at the same step in each:
+There is one corpus per skill in `benchmarks/skills/goldens/` (Facebook compose, Facebook
+edit), each run as its own benchmark (`peal.skills.v2:<skill id>`). The same tasks run in five
+arms, with the same seed at the same step in each:
 
 - `no-skill`: the model alone.
-- `prose`: the skill's plan and step guidance injected as Oasis Cognition injects it.
+- `prose`: the skill's plan guidance, which is all Oasis Cognition gives the model: it goes
+  into the planning prompt, and the per-step prose (react guidance) is never injected.
 - `prose+contract`: that prose, with the skill's invariants enforced by the executor.
-- `contract+pathway`: the contract enforced, and the step guidance replaced by a learned
-  workflow (`src/skills/workflow-memory.ts`). The model sees only the plan guidance, and
-  only when it is asked.
+- `contract+pathway`: the contract enforced, and a workflow learned from the arm's own
+  earlier runs (`src/skills/workflow-memory.ts`), followed without the model.
+- `contract+pathway+demo`: the same, with the memory first seeded from the corpus's
+  `demonstrations`, one correct run per task as a person would show it. A demonstration is
+  retained only if it succeeds and honours the contract, like any other run.
 
 The pathway arm learns as it goes. After each of its episodes the run is offered to the
 workflow memory, which retains it only if it succeeded and honoured the contract (no
@@ -204,6 +209,11 @@ Four measurements, because a skill can fail in four independent ways:
   arms.
 - Learning: success, steps and model calls by run in the pathway arm. Run 1 has nothing
   learned; later runs are compared against it with a 95% interval on model calls.
+- Demonstrations (ci): each demonstration succeeds, is retained or covered by an earlier one
+  of the same intent, and with only demonstrations learned every task is done entirely by
+  following a workflow. Goals supply their values as slots (each quoted string, `{{1}}`,
+  `{{2}}`, …), in typed text and in click anchors, so one demonstration covers every goal of
+  its intent.
 - Invalidation: on the redesigned page, workflow steps executed that had no effect
   (`stalePathwaySteps`, which must be zero), invalidations, and success.
 

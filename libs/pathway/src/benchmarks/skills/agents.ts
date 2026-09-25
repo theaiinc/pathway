@@ -66,6 +66,7 @@ const SYSTEM_PROMPT = `You operate a web browser for the user. Each turn you see
 
 Reply with exactly one JSON object and nothing else, one of:
 {"action":"click","target":"<element label exactly as listed>"}
+{"action":"click","target":"<label>","anchor":"<text of the post it belongs to>"}  (when several elements share a label)
 {"action":"type","text":"<text to type into the focused field>"}
 {"action":"clear"}
 {"action":"wait"}
@@ -144,7 +145,7 @@ export function describeAction(action: AgentAction | null): string {
   if (!action) return 'invalid reply';
   switch (action.action) {
     case 'click':
-      return `click "${action.target}"`;
+      return action.anchor ? `click "${action.target}" on the post "${action.anchor}"` : `click "${action.target}"`;
     case 'type':
       return `type "${action.text}"`;
     default:
@@ -188,7 +189,9 @@ function toAction(json: string): AgentAction | null {
   }
   const kind = typeof value.action === 'string' ? value.action.toLowerCase() : '';
   if (kind === 'click' && typeof value.target === 'string' && value.target.trim()) {
-    return { action: 'click', target: value.target };
+    return typeof value.anchor === 'string' && value.anchor.trim()
+      ? { action: 'click', target: value.target, anchor: value.anchor }
+      : { action: 'click', target: value.target };
   }
   if (kind === 'type' && typeof value.text === 'string') return { action: 'type', text: value.text };
   if (kind === 'clear' || kind === 'wait') return { action: kind };

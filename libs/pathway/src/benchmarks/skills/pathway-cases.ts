@@ -17,7 +17,7 @@ export function toRunReport(skillId: string, goal: string, episode: EpisodeResul
     harmfulActions: episode.harmfulActions,
     steps: episode.trace
       .filter((step): step is typeof step & { action: AgentAction } => step.action !== null)
-      .map(step => ({ step: toWorkflowStep(step.action), screen: step.screen, effective: step.effective })),
+      .map(step => ({ step: toWorkflowStep(step.executed ?? step.action), screen: step.screen, effective: step.effective })),
     evidence: hashContent(episode.trace),
   };
 }

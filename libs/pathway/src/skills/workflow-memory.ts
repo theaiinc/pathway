@@ -101,27 +101,62 @@ function honouredContract(candidate: CandidateKnowledge): boolean {
   return Boolean(run?.success) && run?.invariantViolations === 0 && run?.harmfulActions === 0;
 }
 
-/** Quoted text in a goal: what the user wants typed. */
-const QUOTED = /["“]([^"”]+)["”]/;
+/** Quoted text in a goal: what the user wants typed, or which post they mean. */
+const QUOTED = /["“]([^"”]+)["”]/g;
 /** Otherwise, what follows the first colon: "Post on Facebook: see you tonight". */
 const AFTER_COLON = /^[^:]{3,80}:\s*(\S[\s\S]*)$/;
 
-/** The text a goal asks to be typed, if it names one. */
-export function goalText(goal: string): string | undefined {
-  return goal.match(QUOTED)?.[1] ?? goal.match(AFTER_COLON)?.[1]?.trim();
+/**
+ * The values a goal supplies, in order: each quoted string, or failing that
+ * the text after the first colon. An edit goal has two: which post, and what
+ * it should say.
+ */
+export function goalSlots(goal: string): string[] {
+  const quoted = [...goal.matchAll(QUOTED)].map(match => match[1]);
+  if (quoted.length) return quoted;
+  const afterColon = goal.match(AFTER_COLON)?.[1]?.trim();
+  return afterColon ? [afterColon] : [];
 }
 
-/** The goal with the text it asks for abstracted: which task a workflow does. */
+/** The first value a goal supplies, if any. */
+export function goalText(goal: string): string | undefined {
+  return goalSlots(goal)[0];
+}
+
+/** The goal with the values it supplies abstracted: which task a workflow does. */
 export function goalIntent(goal: string): string {
-  const text = goalText(goal);
-  return (text === undefined ? goal : goal.replace(text, '{{text}}')).trim();
+  let intent = goal;
+  goalSlots(goal).forEach((slot, i) => {
+    intent = intent.replace(slot, `{{${i + 1}}}`);
+  });
+  return intent.trim();
+}
+
+const SLOT = /\{\{(\d+|text)\}\}/g;
+
+/** Replace a value with its slot marker when it is exactly one of the goal's values. */
+function templated(value: string | undefined, slots: readonly string[]): string | undefined {
+  if (value === undefined) return value;
+  const index = slots.indexOf(value);
+  return index >= 0 ? `{{${index + 1}}}` : value;
+}
+
+/** Fill slot markers from a goal's values; `{{text}}` is the pre-0.2 name for `{{1}}`. */
+function filled(value: string | undefined, slots: readonly string[]): string | undefined {
+  if (value === undefined) return value;
+  return value.replace(SLOT, (_, name: string) => slots[name === 'text' ? 0 : Number(name) - 1] ?? '');
+}
+
+function slotsUsed(value: string | undefined): number[] {
+  return [...(value ?? '').matchAll(SLOT)].map(([, name]) => (name === 'text' ? 1 : Number(name)));
 }
 
 /** The structure of a screen as an agent reads it: its title and the labels it can act on, not their contents. */
 export function screenStructure(rendered: string): { readonly title: string; readonly elements: readonly string[] } {
   const lines = rendered.split('\n');
   const elements = lines
-    .map(line => line.match(/^\s*\[\d+\]\s*"(.*)"\s*$/)?.[1])
+    // The label only: anything after it (which post a control belongs to) is content.
+    .map(line => line.match(/^\s*\[\d+\]\s*"([^"]*)"/)?.[1])
     .filter((label): label is string => label !== undefined);
   return { title: lines[0]?.trim() ?? '', elements };
 }
@@ -220,7 +255,10 @@ export class SkillWorkflowMemory {
     const memory = new SkillWorkflowMemory(validator);
     for (const workflow of snapshot.workflows) memory.store.put('skill-workflow', workflow);
     for (const derivation of snapshot.derivations) memory.record(derivation);
-    for (const [slot, id] of snapshot.active) if (memory.store.has(id)) memory.active.set(slot, id);
+    // Keys from before numbered slots name the intent's value {{text}}.
+    for (const [slot, id] of snapshot.active) {
+      if (memory.store.has(id)) memory.active.set(slot.replace(/\{\{text\}\}/g, '{{1}}'), id);
+    }
     for (const id of snapshot.invalid) memory.invalid.add(id);
     memory.stats = { ...snapshot.stats };
     return memory;
@@ -236,15 +274,16 @@ export class SkillWorkflowMemory {
    * it, and only if it is shorter than the workflow already trusted.
    */
   learn(run: RunReport): { readonly retained: boolean; readonly reason: string } {
-    const text = goalText(run.goal);
+    const slots = goalSlots(run.goal);
     const steps: WorkflowStep[] = run.steps
       .filter(observed => observed.effective)
       .map(observed => ({
         screen: observed.screen,
-        step:
-          observed.step.action === 'type' && text !== undefined && observed.step.text === text
-            ? { ...observed.step, text: '{{text}}' }
-            : observed.step,
+        step: withoutUndefined({
+          ...observed.step,
+          text: templated(observed.step.text, slots),
+          anchor: templated(observed.step.anchor, slots),
+        }),
       }));
     const workflow: SkillWorkflow = { skillId: run.skillId, intent: goalIntent(run.goal), steps };
 
@@ -252,7 +291,9 @@ export class SkillWorkflowMemory {
     // Replaying a workflow that types words the goal never asked for would
     // publish an old post's text under a new request. Typed text must come
     // from the goal, templated or verbatim.
-    const foreign = steps.find(({ step }) => step.action === 'type' && step.text !== '{{text}}' && !run.goal.includes(step.text ?? ''));
+    const foreign = steps.find(
+      ({ step }) => step.action === 'type' && slotsUsed(step.text).length === 0 && !run.goal.includes(step.text ?? '')
+    );
     if (foreign) {
       this.stats.rejected++;
       return { retained: false, reason: 'types text the goal did not ask for' };
@@ -325,11 +366,11 @@ export class SkillWorkflowMemory {
       };
     }
 
-    const text = goalText(goal) ?? '';
+    const slots = goalSlots(goal);
     const step = expected.step;
     return {
       kind: 'follow',
-      step: step.action === 'type' ? { ...step, text: (step.text ?? '').replace('{{text}}', text) } : step,
+      step: withoutUndefined({ ...step, text: filled(step.text, slots), anchor: filled(step.anchor, slots) }),
     };
   }
 
@@ -338,12 +379,18 @@ export class SkillWorkflowMemory {
   }
 }
 
-/** Whether a workflow's typed text can be produced for this goal. */
+/** Whether every value a workflow needs (typed text, anchors) can be produced for this goal. */
 function appliesTo(workflow: SkillWorkflow, goal: string): boolean {
+  const slots = goalSlots(goal);
   return workflow.steps.every(({ step }) => {
-    if (step.action !== 'type') return true;
-    return step.text === '{{text}}' ? goalText(goal) !== undefined : goal.includes(step.text ?? '');
+    const needed = [...slotsUsed(step.text), ...slotsUsed(step.anchor)];
+    if (needed.some(slot => slot > slots.length)) return false;
+    return step.action !== 'type' || needed.length > 0 || goal.includes(step.text ?? '');
   });
+}
+
+function withoutUndefined<T extends object>(value: T): T {
+  return Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined)) as T;
 }
 
 function key(skillId: string, intent: string, startScreen: Hash): string {

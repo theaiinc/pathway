@@ -115,13 +115,13 @@ describe('SkillBenchmark (live pathway arm, with a fake model)', () => {
       agentFactory: () => new GuidanceSensitiveAgent(),
     }).run({ profile: getBenchmarkProfile('nightly'), liveServices: true });
 
-    expect(result.metrics['learning.run1.meanModelCalls']).toBeGreaterThan(0);
-    expect(result.metrics['learning.later.meanModelCalls']).toBe(0);
-    expect(result.metrics['learning.later.successRate']).toBe(1);
+    expect(result.metrics['learning.contract+pathway.run1.meanModelCalls']).toBeGreaterThan(0);
+    expect(result.metrics['learning.contract+pathway.later.meanModelCalls']).toBe(0);
+    expect(result.metrics['learning.contract+pathway.later.successRate']).toBe(1);
     // One first-run episode is too few to call the drop significant, so the
     // learning case itself stays a warning here; the metrics show the drop.
-    expect(result.metrics['redesign.invalidations']).toBe(1);
-    expect(result.metrics['redesign.stalePathwaySteps']).toBe(0);
+    expect(result.metrics['redesign.contract+pathway.invalidations']).toBe(1);
+    expect(result.metrics['redesign.contract+pathway.stalePathwaySteps']).toBe(0);
     expect(result.cases.find(item => item.id === 'redesign/contract+pathway')?.status).toBe('passed');
   });
 });
